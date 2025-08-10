@@ -1,4 +1,6 @@
 import { PrismaClient } from "@prisma/client";
+import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import Database from "better-sqlite3";
 
 let prisma: PrismaClient;
 
@@ -6,15 +8,14 @@ declare global {
     var __db__: PrismaClient;
 }
 
-// this is needed because in development we don't want to restart
-// the server with every change, but we want to make sure we don't
-// create a new connection to the DB with every change either.
-// in production we'll have a single connection to the DB.
+// Singleton pattern for Prisma with Adapter
 if (process.env.NODE_ENV === "production") {
-    prisma = new PrismaClient();
+    const adapter = new PrismaBetterSqlite3({ url: process.env.DATABASE_URL! });
+    prisma = new PrismaClient({ adapter });
 } else {
     if (!global.__db__) {
-        global.__db__ = new PrismaClient();
+        const adapter = new PrismaBetterSqlite3({ url: process.env.DATABASE_URL! });
+        global.__db__ = new PrismaClient({ adapter });
     }
     prisma = global.__db__;
     prisma.$connect();

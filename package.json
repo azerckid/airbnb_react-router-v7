@@ -2,6 +2,9 @@
   "name": "airbnb-react-router-v7",
   "private": true,
   "type": "module",
+  "prisma": {
+    "seed": "node --loader ts-node/esm prisma/seed.ts"
+  },
   "scripts": {
     "build": "react-router build",
     "dev": "react-router dev",
@@ -12,9 +15,11 @@
     "@chakra-ui/react": "^3.30.0",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
+    "@prisma/adapter-better-sqlite3": "^7.1.0",
     "@prisma/client": "^7.1.0",
     "@react-router/node": "7.10.1",
     "@react-router/serve": "7.10.1",
+    "better-sqlite3": "^12.5.0",
     "framer-motion": "^12.23.25",
     "isbot": "^5.1.31",
     "next-themes": "^0.4.6",
@@ -27,10 +32,13 @@
   "devDependencies": {
     "@react-router/dev": "7.10.1",
     "@tailwindcss/vite": "^4.1.13",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "tailwindcss": "^4.1.13",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.2",
     "vite": "^7.1.7",
     "vite-tsconfig-paths": "^5.1.4"

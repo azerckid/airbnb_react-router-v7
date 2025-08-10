@@ -1,11 +1,103 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "sqlite"
+}
+
+model User {
+  id        String   @id @default(cuid())
+  username  String   @unique
+  email     String   @unique
+  password  String?
+  name      String?
+  avatar    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  isAdmin   Boolean  @default(false)
+  isHost    Boolean  @default(false)
+
+  rooms     Room[]
+  bookings  Booking[]
+  reviews   Review[]
+  wishlists Wishlist[]
+}
+
+model Room {
+  id          String   @id @default(cuid())
+  title       String
+  description String
+  price       Int
+  address     String?
+  city        String?
+  country     String?
+  photo       String?  // Main photo, simplifies for valid MVP
+  // photos   Photo[] // Could be a separate model later
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  ownerId     String
+  owner       User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id])
+
+  bookings    Booking[]
+  reviews     Review[]
+  wishlists   Wishlist[]
+}
+
+model Category {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  icon        String?  // Name of the icon (e.g., FaUmbrellaBeach)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  rooms       Room[]
+}
+
+model Booking {
+  id        String   @id @default(cuid())
+  checkIn   DateTime
+  checkOut  DateTime
+  guests    Int
+  total     Int
+  status    String   @default("pending") // pending, confirmed, cancelled
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  roomId    String
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  rating    Int
+  comment   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  roomId    String
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+}
+
+model Wishlist {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  rooms     Room[]
 }
