@@ -1,0 +1,197 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+}
+
+html,
+body {
+  @apply bg-white dark:bg-gray-950;
+
+  @media (prefers-color-scheme: dark) {
+    color-scheme: dark;
+  }
+}
+
+/* React Day Picker Chakra UI Integration */
+.chakra-day-picker {
+  --rdp-cell-size: 40px;
+  --rdp-accent-color: var(--chakra-colors-red-500);
+  --rdp-background-color: var(--chakra-colors-white);
+  --rdp-accent-color-dark: var(--chakra-colors-red-400);
+  --rdp-background-color-dark: var(--chakra-colors-gray-800);
+  --rdp-outline: 2px solid var(--chakra-colors-red-500);
+  --rdp-outline-selected: 2px solid var(--chakra-colors-red-500);
+  font-family: var(--chakra-fonts-body);
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.chakra-day-picker .rdp-months {
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+}
+
+.chakra-day-picker .rdp-month {
+  margin: 0.5rem;
+  flex: 0 0 auto;
+}
+
+.chakra-day-picker .rdp-table {
+  width: 100%;
+  max-width: none;
+}
+
+.chakra-day-picker .rdp-head_cell {
+  color: var(--chakra-colors-gray-500);
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  padding: 0.5rem;
+}
+
+.chakra-day-picker .rdp-day {
+  width: var(--rdp-cell-size);
+  height: var(--rdp-cell-size);
+  border-radius: 8px;
+  font-weight: 500;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.chakra-day-picker .rdp-day:hover:not([disabled]):not(.rdp-day_selected) {
+  background-color: var(--chakra-colors-gray-100);
+  color: var(--chakra-colors-gray-800);
+}
+
+.chakra-day-picker .rdp-day[disabled] {
+  color: var(--chakra-colors-gray-300);
+  cursor: not-allowed;
+}
+
+.chakra-day-picker .rdp-day_selected,
+.chakra-day-picker .rdp-day_range_start,
+.chakra-day-picker .rdp-day_range_end {
+  background-color: var(--chakra-colors-red-500) !important;
+  color: white !important;
+  font-weight: 600;
+}
+
+.chakra-day-picker .rdp-day_range_middle {
+  background-color: var(--chakra-colors-red-50) !important;
+  color: var(--chakra-colors-red-500) !important;
+}
+
+.chakra-day-picker .rdp-day_outside {
+  color: var(--chakra-colors-gray-300);
+}
+
+.chakra-day-picker .rdp-day_weekend {
+  color: var(--chakra-colors-red-500);
+}
+
+.chakra-day-picker .rdp-day_weekend.rdp-day_range_middle {
+  color: var(--chakra-colors-red-500);
+}
+
+.chakra-day-picker .rdp-caption {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+  font-weight: 600;
+  font-size: 1rem;
+  position: relative;
+  width: 100%;
+}
+
+.chakra-day-picker .rdp-caption_label {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.chakra-day-picker .rdp-nav {
+  display: flex;
+  gap: 0.5rem;
+  position: absolute;
+  width: 100%;
+  justify-content: space-between;
+  left: 0;
+  right: 0;
+  padding: 0 0.5rem;
+  pointer-events: none;
+}
+
+.chakra-day-picker .rdp-nav_button_previous,
+.chakra-day-picker .rdp-nav_button_next {
+  pointer-events: auto;
+}
+
+.chakra-day-picker .rdp-nav_button_previous {
+  margin-right: auto;
+}
+
+.chakra-day-picker .rdp-nav_button_next {
+  margin-left: auto;
+}
+
+.chakra-day-picker .rdp-button {
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 8px;
+  transition: background-color 0.2s;
+  color: var(--chakra-colors-gray-800);
+  font-weight: 600;
+}
+
+.chakra-day-picker .rdp-button:hover:not([disabled]) {
+  background-color: var(--chakra-colors-gray-100);
+}
+
+.chakra-day-picker .rdp-button[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .chakra-day-picker {
+    --rdp-background-color: var(--chakra-colors-gray-800);
+    --rdp-accent-color: var(--chakra-colors-red-400);
+  }
+
+  .chakra-day-picker .rdp-head_cell {
+    color: var(--chakra-colors-gray-400);
+  }
+
+  .chakra-day-picker .rdp-day:hover:not([disabled]):not(.rdp-day_selected) {
+    background-color: var(--chakra-colors-white-alpha-200);
+    color: var(--chakra-colors-white);
+  }
+
+  .chakra-day-picker .rdp-day[disabled] {
+    color: var(--chakra-colors-gray-600);
+  }
+
+  .chakra-day-picker .rdp-day_outside {
+    color: var(--chakra-colors-gray-600);
+  }
+
+  .chakra-day-picker .rdp-button {
+    color: var(--chakra-colors-white);
+  }
+
+  .chakra-day-picker .rdp-button:hover:not([disabled]) {
+    background-color: var(--chakra-colors-white-alpha-200);
+  }
+}
