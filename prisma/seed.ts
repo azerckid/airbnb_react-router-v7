@@ -53,6 +53,38 @@ async function main() {
         },
     });
 
+    // 4. Create Rooms
+    // Need to fetch categories first to link
+    const dbCategories = await prisma.category.findMany();
+
+    // Create random rooms
+    const roomTitles = [
+        "Cozy Beachfront Cottage",
+        "Modern City Apartment",
+        "Rustic Wood Cabin",
+        "Luxury Seaside Villa",
+        "Downtown Loft",
+    ];
+
+    for (let i = 0; i < 10; i++) {
+        const randomCat = dbCategories[Math.floor(Math.random() * dbCategories.length)];
+        const title = roomTitles[i % roomTitles.length] + ` ${i + 1}`;
+
+        await prisma.room.create({
+            data: {
+                title,
+                country: "South Korea",
+                city: "Seoul",
+                price: 100 + (i * 20),
+                owner: { connect: { id: admin.id } },
+                category: { connect: { id: randomCat.id } },
+                description: `This is a wonderful ${randomCat.name.toLowerCase()} place to stay.`,
+                address: `123 Gangnam-gu, Street ${i}`,
+                photo: `https://loremflickr.com/640/480/house,room?random=${i}`,
+            }
+        });
+    }
+
     console.log("Seeding completed.");
 }
 
