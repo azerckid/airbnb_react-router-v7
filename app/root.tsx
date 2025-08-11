@@ -8,7 +8,12 @@ import {
 } from "react-router";
 
 import type { Route } from "./+types/root";
-import "./app.css";
+import stylesheet from "./app.css?url";
+
+import { Provider } from "./components/ui/provider";
+import { Navigation } from "./components/common/Navigation";
+import { Footer } from "./components/common/Footer";
+import { getUser } from "./services/auth.server";
 
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -21,11 +26,13 @@ export const links: Route.LinksFunction = () => [
     rel: "stylesheet",
     href: "https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap",
   },
+  { rel: "stylesheet", href: stylesheet },
 ];
 
-import { Provider } from "~/components/ui/provider";
-import { Navigation } from "~/components/common/Navigation";
-import { Footer } from "~/components/common/Footer";
+export async function loader({ request }: Route.LoaderArgs) {
+  const user = await getUser(request);
+  return { user };
+}
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
@@ -38,24 +45,23 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         <Provider>
-          <div className="flex flex-col min-h-screen">
-            {/* Navigation needs user prop - for now passing null until Auth phase */}
-            <Navigation user={null} isLoggedIn={false} />
-            <main className="flex-1 bg-gray-50 dark:bg-gray-900">
-              {children}
-            </main>
-            <Footer />
-          </div>
+          {children}
+          <ScrollRestoration />
+          <Scripts />
         </Provider>
-        <ScrollRestoration />
-        <Scripts />
       </body>
     </html>
   );
 }
 
-export default function App() {
-  return <Outlet />;
+export default function App({ loaderData }: Route.ComponentProps) {
+  return (
+    <>
+      <Navigation user={loaderData.user} isLoggedIn={!!loaderData.user} />
+      <Outlet context={{ user: loaderData.user }} />
+      <Footer />
+    </>
+  );
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {

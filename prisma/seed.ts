@@ -1,11 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import Database from "better-sqlite3";
-// We can't import bcryptjs yet because we might not have installed it fully or types issue? 
-// No, I uninstalled it from frontend but installed it here? Wait.
-// Let me check package.json for "bcryptjs".
-// Actually I better use a simple hash or just plain text for now if bcrypt is not available, 
-// BUT better to install bcryptjs.
+import bcrypt from "bcryptjs";
 
 // const db = new Database("dev.db"); // Not needed
 const adapter = new PrismaBetterSqlite3({ url: process.env.DATABASE_URL! });
@@ -43,15 +39,17 @@ async function main() {
     const adminEmail = "admin@airbnb.com";
     const admin = await prisma.user.upsert({
         where: { email: adminEmail },
-        update: {},
+        update: {
+            password: await bcrypt.hash("password123", 10),
+        },
         create: {
-            username: "admin",
             email: adminEmail,
+            username: "admin",
             name: "Admin User",
-            password: "password123", // Will be hashed in real app
+            password: bcrypt.hashSync("password123", 10),
             isAdmin: true,
             isHost: true,
-            avatar: "https://avatars.githubusercontent.com/u/100000?v=4",
+            avatar: "https://github.com/shadcn.png",
         },
     });
 
