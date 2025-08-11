@@ -1,5 +1,7 @@
+import { useState } from "react";
 import type { Route } from "./+types/rooms.$roomId";
 import { prisma } from "~/db.server";
+import { requireUser, getUserId } from "~/services/auth.server";
 import {
     Box,
     Container,
@@ -14,6 +16,11 @@ import {
     Separator
 } from "@chakra-ui/react";
 import { FaStar } from "react-icons/fa";
+import { DayPicker, type DateRange } from "react-day-picker";
+import "react-day-picker/style.css";
+import "~/styles/calendar.css";
+import { differenceInCalendarDays } from "date-fns";
+import { Form, redirect } from "react-router";
 
 export function meta({ data }: Route.MetaArgs) {
     if (!data) return [{ title: "Room not found" }];
@@ -23,7 +30,8 @@ export function meta({ data }: Route.MetaArgs) {
     ];
 }
 
-export async function loader({ params }: Route.LoaderArgs) {
+export async function loader({ params, request }: Route.LoaderArgs) {
+    const userId = await getUserId(request);
     const room = await prisma.room.findUnique({
         where: { id: params.roomId },
         include: {
@@ -41,15 +49,59 @@ export async function loader({ params }: Route.LoaderArgs) {
         throw new Response("Not Found", { status: 404 });
     }
 
-    return { room };
+    return { room, user: userId ? { id: userId } : null }; // Pass minimal user info or handle full user fetch if needed
+}
+
+export async function action({ request, params }: Route.ActionArgs) {
+    const user = await requireUser(request); // Throws redirect if not expected
+
+    const formData = await request.formData();
+    const checkIn = formData.get("checkIn") as string;
+    const checkOut = formData.get("checkOut") as string;
+    const total = formData.get("total") as string;
+    const guests = formData.get("guests") as string;
+
+    if (!checkIn || !checkOut || !total) {
+        return { error: "Missing required fields" };
+    }
+
+    try {
+        await prisma.booking.create({
+            data: {
+                checkIn: new Date(checkIn),
+                checkOut: new Date(checkOut),
+                total: parseInt(total),
+                guests: parseInt(guests) || 1,
+                userId: user.id,
+                roomId: params.roomId!,
+                status: "confirmed" // Auto-confirm for MVP
+            }
+        });
+        return redirect("/trips");
+    } catch (e) {
+        console.error(e);
+        return { error: "Booking failed" };
+    }
 }
 
 export default function RoomDetail({ loaderData }: Route.ComponentProps) {
-    const { room } = loaderData;
+    const { room, user } = loaderData;
+    const [selectedRange, setSelectedRange] = useState<DateRange | undefined>();
 
     const rating = room.reviews.length > 0
         ? (room.reviews.reduce((acc: number, r: any) => acc + r.rating, 0) / room.reviews.length).toFixed(1)
         : "New";
+
+    // Price Calculation
+    const checkIn = selectedRange?.from;
+    const checkOut = selectedRange?.to;
+
+    let totalNights = 0;
+    if (checkIn && checkOut) {
+        totalNights = differenceInCalendarDays(checkOut, checkIn);
+    }
+
+    const totalPrice = totalNights > 0 ? room.price * totalNights : room.price;
 
     return (
         <Container maxW="7xl" py={10}>
@@ -100,6 +152,31 @@ export default function RoomDetail({ loaderData }: Route.ComponentProps) {
 
                         <Separator />
 
+                        {/* Calendar Section in Main Column too */}
+                        <VStack align="flex-start" gap={4}>
+                            <Heading size="md">Select check-in date</Heading>
+                            <Text color="fg.muted" fontSize="sm">Add your travel dates for exact pricing</Text>
+                            <Box
+                                borderWidth="1px"
+                                borderRadius="xl"
+                                p={4}
+                                display="inline-block"
+                                alignSelf="flex-start"
+                                overflow="auto"
+                                maxW="full"
+                            >
+                                <DayPicker
+                                    mode="range"
+                                    selected={selectedRange}
+                                    onSelect={setSelectedRange}
+                                    numberOfMonths={2}
+                                    pagedNavigation
+                                />
+                            </Box>
+                        </VStack>
+
+                        <Separator />
+
                         {/* Reviews Preview (Simple List) */}
                         <VStack align="stretch" gap={4}>
                             <Heading size="md">Reviews</Heading>
@@ -147,20 +224,68 @@ export default function RoomDetail({ loaderData }: Route.ComponentProps) {
                                     </HStack>
                                 </HStack>
 
-                                <Button size="lg" colorPalette="red" width="full">
-                                    Reserve
+                                <Grid templateColumns="1fr 1fr" borderWidth="1px" borderRadius="lg" mb={2}>
+                                    <Box p={3} borderRightWidth="1px">
+                                        <Text fontSize="xs" fontWeight="bold" textTransform="uppercase">Check-in</Text>
+                                        <Text fontSize="sm">{checkIn ? checkIn.toLocaleDateString() : "Add date"}</Text>
+                                    </Box>
+                                    <Box p={3}>
+                                        <Text fontSize="xs" fontWeight="bold" textTransform="uppercase">Check-out</Text>
+                                        <Text fontSize="sm">{checkOut ? checkOut.toLocaleDateString() : "Add date"}</Text>
+                                    </Box>
+                                </Grid>
+
+                                <Button
+                                    size="lg"
+                                    colorPalette="red"
+                                    width="full"
+                                    disabled={!checkIn || !checkOut}
+                                >
+                                    {checkIn && checkOut ? "Reserve" : "Check availability"}
                                 </Button>
 
                                 <Text fontSize="xs" textAlign="center" color="fg.muted">
                                     You won't be charged yet
                                 </Text>
 
-                                <VStack gap={2} pt={4}>
-                                    <HStack justify="space-between" w="full">
-                                        <Text textDecoration="underline">Total price</Text>
-                                        <Text fontWeight="bold">${room.price}</Text>
-                                    </HStack>
-                                </VStack>
+                                {checkIn && checkOut && totalNights > 0 && (
+                                    <VStack gap={2} pt={4} w="full">
+                                        <HStack justify="space-between" w="full">
+                                            <Text textDecoration="underline">${room.price} x {totalNights} nights</Text>
+                                            <Text>${room.price * totalNights}</Text>
+                                        </HStack>
+                                        <HStack justify="space-between" w="full">
+                                            <Text textDecoration="underline">Cleaning fee</Text>
+                                            <Text>$20</Text>
+                                        </HStack>
+                                        <HStack justify="space-between" w="full">
+                                            <Text textDecoration="underline">Service fee</Text>
+                                            <Text>$10</Text>
+                                        </HStack>
+                                        <Separator my={2} />
+                                        <HStack justify="space-between" w="full" fontWeight="bold">
+                                            <Text>Total before taxes</Text>
+                                            <Text>${(room.price * totalNights) + 30}</Text>
+                                        </HStack>
+
+                                        <Form method="post" style={{ width: "100%" }}>
+                                            <input type="hidden" name="checkIn" value={checkIn.toISOString()} />
+                                            <input type="hidden" name="checkOut" value={checkOut.toISOString()} />
+                                            <input type="hidden" name="total" value={(room.price * totalNights) + 30} />
+                                            <input type="hidden" name="guests" value={1} />
+
+                                            <Button
+                                                type="submit"
+                                                size="lg"
+                                                colorPalette="red"
+                                                width="full"
+                                                mt={4}
+                                            >
+                                                Reserve
+                                            </Button>
+                                        </Form>
+                                    </VStack>
+                                )}
                             </VStack>
                         </Box>
                     </Box>
