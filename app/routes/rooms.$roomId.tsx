@@ -119,16 +119,45 @@ export default function RoomDetail({ loaderData }: Route.ComponentProps) {
                     </HStack>
                 </VStack>
 
-                {/* Images - Simple Hero (Extend to Grid later for full clone feel) */}
-                <Box borderRadius="2xl" overflow="hidden" aspectRatio="16/9" maxH="600px">
-                    <Image
-                        src={room.photo || "https://placehold.co/1200x800"}
-                        alt={room.title}
-                        w="full"
-                        h="full"
-                        objectFit="cover"
-                    />
-                </Box>
+                {/* Images - Grid Layout */}
+                <Grid templateColumns={{ base: "1fr", md: "1fr 1fr", lg: "2fr 1fr 1fr" }} gap={2} h={{ base: "auto", md: "400px" }} borderRadius="2xl" overflow="hidden">
+                    <Box gridColumn={{ base: "span 1", lg: "span 1" }} h="full">
+                        <Image
+                            src={room.photo || "https://placehold.co/1200x800"}
+                            alt={room.title}
+                            w="full"
+                            h="full"
+                            objectFit="cover"
+                        />
+                    </Box>
+                    <Box display={{ base: "none", md: "block" }} h="full">
+                        <Image
+                            src="https://placehold.co/600x400?text=Room+2"
+                            alt="Room View 2"
+                            w="full"
+                            h="full"
+                            objectFit="cover"
+                        />
+                    </Box>
+                    <Box display={{ base: "none", lg: "block" }} h="full">
+                        <VStack h="full" gap={2}>
+                            <Image
+                                src="https://placehold.co/600x400?text=Room+3"
+                                alt="Room View 3"
+                                w="full"
+                                h="50%"
+                                objectFit="cover"
+                            />
+                            <Image
+                                src="https://placehold.co/600x400?text=Room+4"
+                                alt="Room View 4"
+                                w="full"
+                                h="50%"
+                                objectFit="cover"
+                            />
+                        </VStack>
+                    </Box>
+                </Grid>
 
                 <Grid templateColumns={{ base: "1fr", lg: "2fr 1fr" }} gap={12} mt={4}>
                     {/* Left Column: Details */}
@@ -234,6 +263,12 @@ export default function RoomDetail({ loaderData }: Route.ComponentProps) {
                                         <Text fontSize="sm">{checkOut ? checkOut.toLocaleDateString() : "Add date"}</Text>
                                     </Box>
                                 </Grid>
+
+                                {checkIn && checkOut && (
+                                    <Text fontSize="sm" mt={-2} mb={2} color="fg.muted">
+                                        {totalNights} nights • {checkIn.toLocaleDateString()} - {checkOut.toLocaleDateString()}
+                                    </Text>
+                                )}
 
                                 <Button
                                     size="lg"
