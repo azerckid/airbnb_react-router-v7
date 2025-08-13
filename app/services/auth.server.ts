@@ -139,3 +139,15 @@ export async function requireUser(request: Request) {
 
     throw await logout(request);
 }
+
+export async function getOptionalUser(request: Request) {
+    const userId = await getUserId(request);
+    if (!userId) return null;
+
+    const user = await prisma.user.findUnique({
+        where: { id: userId },
+    });
+
+    if (user) return user;
+    return null;
+}

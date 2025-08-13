@@ -7,11 +7,8 @@
 
 html,
 body {
-  @apply bg-white dark:bg-gray-950;
-
-  @media (prefers-color-scheme: dark) {
-    color-scheme: dark;
-  }
+  @apply bg-white text-black;
+  color-scheme: light;
 }
 
 /* React Day Picker Chakra UI Integration */
@@ -164,34 +161,3 @@ body {
 }
 
 /* Dark mode support */
-@media (prefers-color-scheme: dark) {
-  .chakra-day-picker {
-    --rdp-background-color: var(--chakra-colors-gray-800);
-    --rdp-accent-color: var(--chakra-colors-red-400);
-  }
-
-  .chakra-day-picker .rdp-head_cell {
-    color: var(--chakra-colors-gray-400);
-  }
-
-  .chakra-day-picker .rdp-day:hover:not([disabled]):not(.rdp-day_selected) {
-    background-color: var(--chakra-colors-white-alpha-200);
-    color: var(--chakra-colors-white);
-  }
-
-  .chakra-day-picker .rdp-day[disabled] {
-    color: var(--chakra-colors-gray-600);
-  }
-
-  .chakra-day-picker .rdp-day_outside {
-    color: var(--chakra-colors-gray-600);
-  }
-
-  .chakra-day-picker .rdp-button {
-    color: var(--chakra-colors-white);
-  }
-
-  .chakra-day-picker .rdp-button:hover:not([disabled]) {
-    background-color: var(--chakra-colors-white-alpha-200);
-  }
-}

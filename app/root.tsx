@@ -44,7 +44,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Links />
       </head>
       <body>
-        <Provider>
+        <Provider defaultTheme="light" forcedTheme="light">
           {children}
           <ScrollRestoration />
           <Scripts />

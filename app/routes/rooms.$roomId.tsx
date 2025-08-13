@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { Route } from "./+types/rooms.$roomId";
 import { prisma } from "~/db.server";
-import { requireUser, getUserId } from "~/services/auth.server";
+import { requireUser, getOptionalUser } from "~/services/auth.server";
 import {
     Box,
     Container,
@@ -15,12 +15,18 @@ import {
     Avatar,
     Separator
 } from "@chakra-ui/react";
-import { FaStar } from "react-icons/fa";
+import {
+    FaStar,
+    FaWifi,
+    FaTv,
+    FaParking,
+    FaSwimmingPool
+} from "react-icons/fa";
 import { DayPicker, type DateRange } from "react-day-picker";
 import "react-day-picker/style.css";
 import "~/styles/calendar.css";
 import { differenceInCalendarDays } from "date-fns";
-import { Form, redirect } from "react-router";
+import { Form, redirect, useActionData, useNavigation } from "react-router";
 
 export function meta({ data }: Route.MetaArgs) {
     if (!data) return [{ title: "Room not found" }];
@@ -30,76 +36,107 @@ export function meta({ data }: Route.MetaArgs) {
     ];
 }
 
-export async function loader({ params, request }: Route.LoaderArgs) {
-    const userId = await getUserId(request);
+export async function loader({ request, params }: Route.LoaderArgs) {
+    const user = await getOptionalUser(request); // Get user for auth check
+    const roomId = params.roomId as string;
     const room = await prisma.room.findUnique({
-        where: { id: params.roomId },
+        where: { id: roomId },
         include: {
             owner: true,
             category: true,
             reviews: {
-                include: {
-                    user: true,
-                }
-            },
+                include: { user: true },
+                orderBy: { createdAt: "desc" } // Show newest first
+            }
         }
     });
 
     if (!room) {
-        throw new Response("Not Found", { status: 404 });
+        throw new Response("Room not found", { status: 404 });
     }
 
-    return { room, user: userId ? { id: userId } : null }; // Pass minimal user info or handle full user fetch if needed
+    return { room, user };
 }
 
 export async function action({ request, params }: Route.ActionArgs) {
-    const user = await requireUser(request); // Throws redirect if not expected
-
+    const user = await requireUser(request);
+    const roomId = params.roomId as string;
     const formData = await request.formData();
-    const checkIn = formData.get("checkIn") as string;
-    const checkOut = formData.get("checkOut") as string;
-    const total = formData.get("total") as string;
-    const guests = formData.get("guests") as string;
+    const intent = formData.get("intent");
 
-    if (!checkIn || !checkOut || !total) {
-        return { error: "Missing required fields" };
-    }
+    if (intent === "create_review") {
+        const rating = Number(formData.get("rating"));
+        const comment = formData.get("comment") as string;
 
-    try {
-        await prisma.booking.create({
+        // Basic validation
+        if (!rating || rating < 1 || rating > 5) {
+            return { error: "Please provide a valid rating (1-5)." };
+        }
+        if (!comment || comment.trim().length === 0) {
+            return { error: "Please write a comment." };
+        }
+
+        await prisma.review.create({
             data: {
-                checkIn: new Date(checkIn),
-                checkOut: new Date(checkOut),
-                total: parseInt(total),
-                guests: parseInt(guests) || 1,
-                userId: user.id,
-                roomId: params.roomId!,
-                status: "confirmed" // Auto-confirm for MVP
+                rating,
+                comment,
+                roomId,
+                userId: user.id
             }
         });
-        return redirect("/trips");
-    } catch (e) {
-        console.error(e);
-        return { error: "Booking failed" };
+        return { success: true };
     }
+
+    // ... existing booking logic ...
+    const checkInString = formData.get("checkIn") as string;
+    const checkOutString = formData.get("checkOut") as string;
+    const guests = Number(formData.get("guests"));
+    const total = Number(formData.get("total"));
+
+    if (!checkInString || !checkOutString) {
+        return { error: "Missing dates" };
+    }
+
+    const checkIn = new Date(checkInString);
+    const checkOut = new Date(checkOutString);
+
+    // Create Booking
+    await prisma.booking.create({
+        data: {
+            checkIn,
+            checkOut,
+            guests,
+            total,
+            userId: user.id,
+            roomId
+        }
+    });
+
+    return redirect("/trips");
 }
 
 export default function RoomDetail({ loaderData }: Route.ComponentProps) {
     const { room, user } = loaderData;
     const [selectedRange, setSelectedRange] = useState<DateRange | undefined>();
+    const actionData = useActionData<typeof action>();
+    const navigation = useNavigation();
+
+    // Make sure we have dates before calculations
+    const checkIn = selectedRange?.from;
+    const checkOut = selectedRange?.to;
+
+    // Calculate nights
+    const totalNights = checkIn && checkOut
+        ? Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24))
+        : 0;
+
+    // Rating state for review form
+    const [ratingInput, setRatingInput] = useState(5);
+    const [commentInput, setCommentInput] = useState("");
 
     const rating = room.reviews.length > 0
         ? (room.reviews.reduce((acc: number, r: any) => acc + r.rating, 0) / room.reviews.length).toFixed(1)
         : "New";
-
-    // Price Calculation
-    const checkIn = selectedRange?.from;
-    const checkOut = selectedRange?.to;
-
-    let totalNights = 0;
-    if (checkIn && checkOut) {
-        totalNights = differenceInCalendarDays(checkOut, checkIn);
-    }
 
     const totalPrice = totalNights > 0 ? room.price * totalNights : room.price;
 
@@ -120,7 +157,14 @@ export default function RoomDetail({ loaderData }: Route.ComponentProps) {
                 </VStack>
 
                 {/* Images - Grid Layout */}
-                <Grid templateColumns={{ base: "1fr", md: "1fr 1fr", lg: "2fr 1fr 1fr" }} gap={2} h={{ base: "auto", md: "400px" }} borderRadius="2xl" overflow="hidden">
+                <Grid
+                    templateColumns={{ base: "1fr", md: "1fr 1fr", lg: "2fr 1fr 1fr" }}
+                    gap={2}
+                    h={{ base: "auto", md: "450px" }}
+                    borderRadius="xl"
+                    overflow="hidden"
+                    mt={6}
+                >
                     <Box gridColumn={{ base: "span 1", lg: "span 1" }} h="full">
                         <Image
                             src={room.photo || "https://placehold.co/1200x800"}
@@ -175,16 +219,60 @@ export default function RoomDetail({ loaderData }: Route.ComponentProps) {
                             </Avatar.Root>
                         </HStack>
 
+                        <Separator />
+
+                        <HStack gap={4}>
+                            <Avatar.Root size="lg">
+                                <Avatar.Image src={room.owner.avatar || undefined} />
+                                <Avatar.Fallback name={room.owner.name || undefined} />
+                            </Avatar.Root>
+                            <VStack align="flex-start" gap={0}>
+                                <Text fontWeight="bold" fontSize="lg">Hosted by {room.owner.name}</Text>
+                                <Text color="fg.muted">Superhost • 2 years hosting</Text>
+                            </VStack>
+                        </HStack>
+
+                        <Separator />
+
                         <Box>
-                            <Text fontSize="lg" lineHeight="tall">{room.description}</Text>
+                            <Text fontSize="lg" lineHeight="tall">
+                                {room.description}
+                            </Text>
+                        </Box>
+
+                        <Separator />
+
+                        <Box>
+                            <Heading size="lg" mb={4}>What this place offers</Heading>
+                            <Grid templateColumns="repeat(2, 1fr)" gap={3}>
+                                <HStack><FaWifi /><Text>Fast Wifi</Text></HStack>
+                                <HStack><FaTv /><Text>Smart TV</Text></HStack>
+                                <HStack><FaParking /><Text>Free Parking</Text></HStack>
+                                <HStack><FaSwimmingPool /><Text>Pool</Text></HStack>
+                            </Grid>
                         </Box>
 
                         <Separator />
 
                         {/* Calendar Section in Main Column too */}
-                        <VStack align="flex-start" gap={4}>
-                            <Heading size="md">Select check-in date</Heading>
-                            <Text color="fg.muted" fontSize="sm">Add your travel dates for exact pricing</Text>
+                        <VStack align="flex-start" gap={1}>
+                            <Heading size="2xl">{room.title}</Heading>
+                            <HStack fontSize="md" color="fg.muted">
+                                <Text>{room.city}, {room.country}</Text>
+                                <Text>•</Text>
+                                <HStack gap={1}>
+                                    <FaStar color="#FF385C" />
+                                    <Text fontWeight="bold" color="fg.default">
+                                        {room.reviews.length > 0
+                                            ? (room.reviews.reduce((acc: number, r: any) => acc + r.rating, 0) / room.reviews.length).toFixed(1)
+                                            : "New"
+                                        }
+                                    </Text>
+                                    <Text textDecoration="underline" cursor="pointer">
+                                        {room.reviews.length} reviews
+                                    </Text>
+                                </HStack>
+                            </HStack>
                             <Box
                                 borderWidth="1px"
                                 borderRadius="xl"
@@ -206,16 +294,78 @@ export default function RoomDetail({ loaderData }: Route.ComponentProps) {
 
                         <Separator />
 
-                        {/* Reviews Preview (Simple List) */}
-                        <VStack align="stretch" gap={4}>
-                            <Heading size="md">Reviews</Heading>
+                        {/* Reviews Section */}
+                        <VStack align="stretch" gap={6}>
+                            <Heading size="lg">Reviews</Heading>
+
+                            {/* Review Form */}
+                            {user ? (
+                                <Box p={6} borderWidth="1px" borderRadius="xl" bg="white" borderColor="border.muted">
+                                    <Form method="post">
+                                        <input type="hidden" name="intent" value="create_review" />
+                                        <VStack align="flex-start" gap={4}>
+                                            <Heading size="sm">Write a Review</Heading>
+
+                                            {/* Star Selection */}
+                                            <HStack>
+                                                <Text color="fg.muted" fontSize="sm">Rating:</Text>
+                                                <HStack gap={1}>
+                                                    {[1, 2, 3, 4, 5].map((star) => (
+                                                        <Box
+                                                            key={star}
+                                                            as="label"
+                                                            cursor="pointer"
+                                                            color={star <= ratingInput ? "#FF385C" : "gray.300"}
+                                                            onClick={() => setRatingInput(star)}
+                                                            _hover={{ transform: "scale(1.2)" }}
+                                                            transition="transform 0.1s"
+                                                        >
+                                                            <input type="radio" name="rating" value={star} style={{ display: "none" }} defaultChecked={star === 5} />
+                                                            <FaStar size={20} />
+                                                        </Box>
+                                                    ))}
+                                                </HStack>
+                                            </HStack>
+
+                                            <Box w="full">
+                                                <textarea
+                                                    name="comment"
+                                                    placeholder="Share your experience..."
+                                                    rows={3}
+                                                    style={{
+                                                        width: "100%",
+                                                        padding: "12px",
+                                                        borderRadius: "8px",
+                                                        backgroundColor: "white",
+                                                        color: "inherit",
+                                                        border: "1px solid #E2E8F0",
+                                                        outline: "none"
+                                                    }}
+                                                    required
+                                                />
+                                            </Box>
+
+                                            <Button type="submit" size="sm" colorPalette="red">
+                                                Submit Review
+                                            </Button>
+                                        </VStack>
+                                    </Form>
+                                </Box>
+                            ) : (
+                                <Box p={4} bg="gray.50" borderRadius="lg">
+                                    <Text color="fg.muted">Please <Text as="span" fontWeight="bold" textDecoration="underline">login</Text> to write a review.</Text>
+                                </Box>
+                            )}
+
+                            {/* Reviews List */}
                             {room.reviews.length === 0 ? (
                                 <Text color="fg.muted">No reviews yet.</Text>
                             ) : (
                                 room.reviews.map((review: any) => (
-                                    <VStack key={review.id} align="flex-start" p={4} bg="bg.panel" borderRadius="lg" borderWidth="1px">
+                                    <VStack key={review.id} align="flex-start" p={4} bg="white" borderRadius="lg" borderWidth="1px" borderColor="border.muted">
                                         <HStack>
                                             <Avatar.Root size="sm">
+                                                <Avatar.Image src={review.user.avatar || undefined} />
                                                 <Avatar.Fallback name={review.user.name || review.user.username} />
                                             </Avatar.Root>
                                             <VStack gap={0} align="flex-start">
@@ -223,7 +373,7 @@ export default function RoomDetail({ loaderData }: Route.ComponentProps) {
                                                 <Text fontSize="xs" color="fg.muted">{new Date(review.createdAt).toLocaleDateString()}</Text>
                                             </VStack>
                                         </HStack>
-                                        <Text mt={2}>{review.comment}</Text>
+                                        <Text mt={2} color="fg.default">{review.comment}</Text>
                                     </VStack>
                                 ))
                             )}
@@ -231,15 +381,19 @@ export default function RoomDetail({ loaderData }: Route.ComponentProps) {
                     </VStack>
 
                     {/* Right Column: Booking Card (Sticky) */}
-                    <Box position="relative">
+                    <Box
+                        gridColumn={{ base: "span 1", lg: "span 1" }}
+                        position="sticky"
+                        top="100px"
+                        h="fit-content"
+                        zIndex={10}
+                    >
                         <Box
-                            position="sticky"
-                            top={24}
                             p={6}
                             borderWidth="1px"
                             borderRadius="xl"
                             boxShadow="lg"
-                            bg="bg.panel"
+                            bg="white"
                         >
                             <VStack align="stretch" gap={4}>
                                 <HStack justify="space-between" align="baseline">

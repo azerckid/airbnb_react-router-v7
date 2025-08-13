@@ -1,27 +1,8 @@
-/* Dark mode overrides for react-day-picker v9 */
+/* Light mode adjustments for react-day-picker v9 */
 .rdp {
     --rdp-day-height: 44px;
     --rdp-day-width: 44px;
     margin: 0;
-}
-
-/* Force white text for all calendar elements in dark mode */
-.rdp-day_button {
-    color: white !important;
-}
-
-.rdp-caption_label {
-    color: white !important;
-}
-
-.rdp-head_cell {
-    color: white !important;
-    font-size: 0.875rem;
-    font-weight: 500;
-}
-
-.rdp-nav_button {
-    color: white !important;
 }
 
 /* Selected state */
@@ -37,12 +18,12 @@
 
 /* Hover effects */
 .rdp-day_button:hover:not([disabled]) {
-    background-color: rgba(255, 255, 255, 0.1) !important;
+    background-color: rgba(0, 0, 0, 0.05) !important;
     border-radius: 50%;
 }
 
 /* Today's date */
 .rdp-day_today .rdp-day_button {
     font-weight: bold;
-    border: 1px solid white;
+    border: 1px solid #222;
 }
