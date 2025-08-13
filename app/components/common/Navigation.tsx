@@ -20,16 +20,15 @@ export function Navigation({
     return (
         <Box as="header" borderBottomWidth="1px" bg="bg">
             <Container maxW="7xl" py={4}>
-                <Stack
-                    justifyContent="space-between"
-                    alignItems="center"
-                    direction={{ sm: "column", md: "row" }}
-                    gap={{ sm: 4, md: 0 }}
+                <HStack
+                    justify="space-between"
+                    align="center"
+                    w="full"
                 >
                     <Button asChild variant="ghost" colorPalette="red">
                         <RouterLink to="/">
                             <HStack gap={2}>
-                                <Text fontWeight="bold">Guest House Booking</Text>
+                                <Text fontWeight="bold" display={{ base: "none", md: "block" }}>Guest House Booking</Text>
                             </HStack>
                         </RouterLink>
                     </Button>
@@ -112,7 +111,7 @@ export function Navigation({
                             </Menu.Root>
                         )}
                     </HStack>
-                </Stack>
+                </HStack>
             </Container>
         </Box>
     );

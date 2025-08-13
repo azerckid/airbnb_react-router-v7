@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { Route } from "./+types/rooms.$roomId";
 import { prisma } from "~/db.server";
 import { requireUser, getOptionalUser } from "~/services/auth.server";
+import { toaster } from "~/components/ui/toaster";
 import {
     Box,
     Container,
@@ -115,11 +116,52 @@ export async function action({ request, params }: Route.ActionArgs) {
     return redirect("/trips");
 }
 
+import { RoomDetailSkeleton } from "~/components/common/RoomDetailSkeleton";
+
+// ... existing code ...
+
 export default function RoomDetail({ loaderData }: Route.ComponentProps) {
     const { room, user } = loaderData;
     const [selectedRange, setSelectedRange] = useState<DateRange | undefined>();
     const actionData = useActionData<typeof action>();
     const navigation = useNavigation();
+
+    // Show skeleton when navigating to this route or submitting form
+    // Note: We might want to keep content for form submission and only show spinner?
+    // User task specifically asked for "Loading States" (Skeletons).
+    // Usually standard navigation triggers a new page load feel.
+    const isLoading = navigation.state === "loading" && navigation.location.pathname.startsWith("/rooms/");
+
+    useEffect(() => {
+        if (actionData) {
+            if (actionData.error) {
+                const timer = setTimeout(() => {
+                    toaster.create({
+                        title: "Error",
+                        description: actionData.error,
+                        type: "error",
+                        duration: 5000,
+                    });
+                }, 0);
+                return () => clearTimeout(timer);
+            } else if (actionData.success) {
+                const timer = setTimeout(() => {
+                    toaster.create({
+                        title: "Success",
+                        description: "Review submitted successfully!",
+                        type: "success",
+                        duration: 5000,
+                    });
+                }, 0);
+                return () => clearTimeout(timer);
+            }
+        }
+    }, [actionData]);
+
+    if (isLoading) {
+        return <RoomDetailSkeleton />;
+    }
+
 
     // Make sure we have dates before calculations
     const checkIn = selectedRange?.from;

@@ -45,8 +45,25 @@ export async function action({ request }: Route.ActionArgs) {
     return null;
 }
 
+import { TableSkeleton } from "~/components/common/TableSkeleton";
+import { useNavigation } from "react-router";
+
 export default function AdminRooms({ loaderData }: Route.ComponentProps) {
     const { rooms } = loaderData;
+    const navigation = useNavigation();
+    const isLoading = navigation.state === "loading" && navigation.location.pathname === "/admin/rooms";
+
+    if (isLoading) {
+        return (
+            <Box>
+                <HStack justify="space-between" mb={6}>
+                    <Heading size="lg">Room Management</Heading>
+                    <Button colorPalette="blue" disabled>Add Room (Coming Soon)</Button>
+                </HStack>
+                <TableSkeleton headers={["Room", "Location", "Price", "Owner", "Actions"]} />
+            </Box>
+        );
+    }
 
     return (
         <Box>

@@ -5,12 +5,15 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useSearchParams,
 } from "react-router";
+import { useEffect } from "react";
 
 import type { Route } from "./+types/root";
 import stylesheet from "./app.css?url";
 
 import { Provider } from "./components/ui/provider";
+import { Toaster, toaster } from "./components/ui/toaster";
 import { Navigation } from "./components/common/Navigation";
 import { Footer } from "./components/common/Footer";
 import { getUser } from "./services/auth.server";
@@ -55,11 +58,41 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App({ loaderData }: Route.ComponentProps) {
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  useEffect(() => {
+    const toastType = searchParams.get("toast");
+
+    if (toastType === "logged_out") {
+      toaster.create({
+        title: "Logged out",
+        description: "See you next time!",
+        type: "success",
+        duration: 3000,
+      });
+    } else if (toastType === "login_success") {
+      toaster.create({
+        title: "Welcome back!",
+        description: "You have successfully logged in.",
+        type: "success",
+        duration: 3000,
+      });
+    }
+
+    // Clear the query param if any relevant toast was found
+    if (toastType) {
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete("toast");
+      setSearchParams(newParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
   return (
     <>
       <Navigation user={loaderData.user} isLoggedIn={!!loaderData.user} />
       <Outlet context={{ user: loaderData.user }} />
       <Footer />
+      <Toaster />
     </>
   );
 }

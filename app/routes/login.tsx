@@ -50,17 +50,58 @@ export async function action({ request }: Route.ActionArgs) {
         return { formError: error || "Something went wrong" };
     }
 
+    // Append success toast to redirect
+    const url = new URL(request.url);
+    const origin = url.origin;
+    // Basic safety check for relative redirects or same-origin
+    let finalRedirect = redirectTo;
+    if (redirectTo === "/" || redirectTo.startsWith("/")) {
+        const separator = redirectTo.includes("?") ? "&" : "?";
+        finalRedirect = `${redirectTo}${separator}toast=login_success`;
+    }
+
     return createUserSession({
         request,
         userId: user.id,
-        redirectTo,
+        redirectTo: finalRedirect,
     });
 }
+
+import { toaster } from "~/components/ui/toaster";
+import { useEffect } from "react";
+
+// ... existing imports ...
+
+// clientAction removed in favor of useEffect for reliability
+
 
 export default function Login() {
     const actionData = useActionData<typeof action>();
     const navigation = useNavigation();
     const isSubmitting = navigation.state === "submitting";
+
+    useEffect(() => {
+        if (actionData?.errors) {
+            toaster.create({
+                title: "Login Failed",
+                description: "Please check your input.",
+                type: "error",
+                duration: 5000,
+                action: {
+                    label: "Close",
+                    onClick: () => console.log("Toast closed"),
+                },
+            });
+        }
+        if (actionData?.formError) {
+            toaster.create({
+                title: "Login Failed",
+                description: actionData.formError,
+                type: "error",
+                duration: 5000,
+            });
+        }
+    }, [actionData]);
 
     return (
         <Container maxW="lg" py={20}>
@@ -79,19 +120,7 @@ export default function Login() {
                 >
                     <Form method="post">
                         <VStack gap={6}>
-                            {actionData?.formError && (
-                                <Box
-                                    w="full"
-                                    p={3}
-                                    bg="red.50"
-                                    color="red.600"
-                                    borderRadius="md"
-                                    fontSize="sm"
-                                    fontWeight="medium"
-                                >
-                                    {actionData.formError}
-                                </Box>
-                            )}
+                            {/* ... Fields ... */}
 
                             <Field.Root invalid={!!actionData?.errors?.usernameOrEmail}>
                                 <Field.Label>Email or Username</Field.Label>

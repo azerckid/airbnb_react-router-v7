@@ -19,7 +19,7 @@ import {
 import { registerSchema } from "~/validations";
 import { createUserSession, register, getUserId } from "~/services/auth.server";
 import type { Route } from "./+types/signup";
-import { FaUser, FaLock, FaEnvelope, FaIdCard } from "react-icons/fa";
+import { FaUser, FaLock, FaEnvelope, FaIdCard, FaUserNinja } from "react-icons/fa";
 
 export async function loader({ request }: Route.LoaderArgs) {
     const userId = await getUserId(request);
@@ -63,17 +63,42 @@ export async function action({ request }: Route.ActionArgs) {
     });
 }
 
+import { toaster } from "~/components/ui/toaster";
+import { useEffect } from "react";
+
+// clientAction removed in favor of useEffect for reliability
+
+
 export default function Signup() {
     const actionData = useActionData<typeof action>();
     const navigation = useNavigation();
     const isSubmitting = navigation.state === "submitting";
+
+    useEffect(() => {
+        if (actionData?.errors) {
+            toaster.create({
+                title: "Signup Failed",
+                description: "Please check your input.",
+                type: "error",
+                duration: 5000,
+            });
+        }
+        if (actionData?.formError) {
+            toaster.create({
+                title: "Signup Failed",
+                description: actionData.formError,
+                type: "error",
+                duration: 5000,
+            });
+        }
+    }, [actionData]);
 
     return (
         <Container maxW="lg" py={20}>
             <VStack gap={8} align="stretch">
                 <VStack gap={2} textAlign="center">
                     <Heading size="3xl">Create an account</Heading>
-                    <Text color="fg.muted">Join us today!</Text>
+                    <Text color="fg.muted">Join our community today</Text>
                 </VStack>
 
                 <Box
@@ -85,19 +110,7 @@ export default function Signup() {
                 >
                     <Form method="post">
                         <VStack gap={5}>
-                            {actionData?.formError && (
-                                <Box
-                                    w="full"
-                                    p={3}
-                                    bg="red.50"
-                                    color="red.600"
-                                    borderRadius="md"
-                                    fontSize="sm"
-                                    fontWeight="medium"
-                                >
-                                    {actionData.formError}
-                                </Box>
-                            )}
+                            {/* Inline error removed, handled by Toast */}
 
                             <Field.Root invalid={!!actionData?.errors?.name}>
                                 <Field.Label>Full Name</Field.Label>
@@ -108,7 +121,8 @@ export default function Signup() {
                                         border="none"
                                         _focus={{ ring: 0 }}
                                         name="name"
-                                        placeholder="John Doe"
+                                        type="text"
+                                        placeholder="Name"
                                     />
                                 </Stack>
                                 {actionData?.errors?.name && (
@@ -119,13 +133,14 @@ export default function Signup() {
                             <Field.Root invalid={!!actionData?.errors?.username}>
                                 <Field.Label>Username</Field.Label>
                                 <Stack direction="row" alignItems="center" bg="gray.50" _dark={{ bg: "gray.800" }} px={3} borderRadius="md" borderWidth="1px">
-                                    <FaUser color="gray" />
+                                    <FaUserNinja color="gray" />
                                     <Input
                                         variant="subtle"
                                         border="none"
                                         _focus={{ ring: 0 }}
                                         name="username"
-                                        placeholder="johndoe"
+                                        type="text"
+                                        placeholder="Username"
                                     />
                                 </Stack>
                                 {actionData?.errors?.username && (
@@ -143,7 +158,7 @@ export default function Signup() {
                                         _focus={{ ring: 0 }}
                                         name="email"
                                         type="email"
-                                        placeholder="hello@airbnb.com"
+                                        placeholder="Email"
                                     />
                                 </Stack>
                                 {actionData?.errors?.email && (

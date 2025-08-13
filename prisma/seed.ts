@@ -4,6 +4,7 @@ import Database from "better-sqlite3";
 import bcrypt from "bcryptjs";
 
 // const db = new Database("dev.db"); // Not needed
+// const db = new Database("dev.db"); // Not needed
 const adapter = new PrismaBetterSqlite3({ url: process.env.DATABASE_URL! });
 const prisma = new PrismaClient({ adapter });
 

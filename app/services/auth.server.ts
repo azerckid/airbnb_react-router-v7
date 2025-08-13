@@ -93,9 +93,9 @@ export async function createUserSession({
 }
 
 // Logout
-export async function logout(request: Request) {
+export async function logout(request: Request, redirectTo: string = "/") {
     const session = await getSession(request.headers.get("Cookie"));
-    return redirect("/", {
+    return redirect(redirectTo, {
         headers: {
             "Set-Cookie": await destroySession(session),
         },

@@ -16,7 +16,6 @@ export function Toaster() {
     return (
         <ChakraToaster toaster={toaster}>
             {(toast) => {
-                console.log("Rendering toast:", toast);
                 const type = (toast as any).type || "info";
                 return (
                     <ToastRoot
@@ -34,4 +33,3 @@ export function Toaster() {
         </ChakraToaster>
     )
 }
-

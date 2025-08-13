@@ -45,8 +45,25 @@ export async function action({ request }: Route.ActionArgs) {
     return null;
 }
 
+import { TableSkeleton } from "~/components/common/TableSkeleton";
+import { useNavigation } from "react-router";
+
 export default function AdminUsers({ loaderData }: Route.ComponentProps) {
     const { users } = loaderData;
+    const navigation = useNavigation();
+    const isLoading = navigation.state === "loading" && navigation.location.pathname === "/admin/users";
+
+    if (isLoading) {
+        return (
+            <Box>
+                <HStack justify="space-between" mb={6}>
+                    <Heading size="lg">User Management</Heading>
+                    <Button colorPalette="blue">Add User</Button>
+                </HStack>
+                <TableSkeleton headers={["User", "Role", "Joined", "Actions"]} />
+            </Box>
+        );
+    }
 
     return (
         <Box>
