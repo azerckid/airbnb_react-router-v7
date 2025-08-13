@@ -90,7 +90,7 @@ export function Navigation({
                                         {user?.isHost && (
                                             <Menu.Item
                                                 value="upload"
-                                                onClick={() => navigate("/rooms/upload")}
+                                                onClick={() => navigate("/rooms/new")}
                                                 cursor="pointer"
                                             >
                                                 방 업로드

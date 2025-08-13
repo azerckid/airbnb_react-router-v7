@@ -45,6 +45,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
         include: {
             owner: true,
             category: true,
+            amenities: true,
             reviews: {
                 include: { user: true },
                 orderBy: { createdAt: "desc" } // Show newest first
@@ -277,7 +278,7 @@ export default function RoomDetail({ loaderData }: Route.ComponentProps) {
                         <Separator />
 
                         <Box>
-                            <Text fontSize="lg" lineHeight="tall">
+                            <Text fontSize="lg" lineHeight="tall" whiteSpace="pre-wrap">
                                 {room.description}
                             </Text>
                         </Box>
@@ -286,12 +287,18 @@ export default function RoomDetail({ loaderData }: Route.ComponentProps) {
 
                         <Box>
                             <Heading size="lg" mb={4}>What this place offers</Heading>
-                            <Grid templateColumns="repeat(2, 1fr)" gap={3}>
-                                <HStack><FaWifi /><Text>Fast Wifi</Text></HStack>
-                                <HStack><FaTv /><Text>Smart TV</Text></HStack>
-                                <HStack><FaParking /><Text>Free Parking</Text></HStack>
-                                <HStack><FaSwimmingPool /><Text>Pool</Text></HStack>
-                            </Grid>
+                            {room.amenities && room.amenities.length > 0 ? (
+                                <Grid templateColumns="repeat(2, 1fr)" gap={3}>
+                                    {room.amenities.map((amenity: any) => (
+                                        <HStack key={amenity.id}>
+                                            <Box color="green.500"><FaStar size="12px" /></Box> {/* Using Star as placeholder bullet */}
+                                            <Text>{amenity.name}</Text>
+                                        </HStack>
+                                    ))}
+                                </Grid>
+                            ) : (
+                                <Text color="fg.muted">No specific amenities listed.</Text>
+                            )}
                         </Box>
 
                         <Separator />

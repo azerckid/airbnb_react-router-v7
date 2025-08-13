@@ -46,6 +46,17 @@ model Room {
   bookings    Booking[]
   reviews     Review[]
   wishlists   Wishlist[]
+  amenities   Amenity[]
+}
+
+model Amenity {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  rooms       Room[]
 }
 
 model Category {

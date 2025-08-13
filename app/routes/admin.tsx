@@ -1,6 +1,6 @@
 import { Outlet, Link, useLocation } from "react-router";
 import { Box, Flex, VStack, Text, Button, HStack, Separator } from "@chakra-ui/react";
-import { FaHome, FaUsers, FaBed, FaCalendarAlt, FaChartLine, FaSignOutAlt } from "react-icons/fa";
+import { FaHome, FaUsers, FaBed, FaCalendarAlt, FaChartLine, FaSignOutAlt, FaUmbrellaBeach, FaList } from "react-icons/fa";
 import { requireUser } from "~/services/auth.server";
 import type { Route } from "./+types/admin";
 import { redirect } from "react-router";
@@ -22,6 +22,8 @@ export default function AdminLayout({ loaderData }: Route.ComponentProps) {
         { name: "Dashboard", icon: FaChartLine, path: "/admin" },
         { name: "Users", icon: FaUsers, path: "/admin/users" },
         { name: "Rooms", icon: FaBed, path: "/admin/rooms" },
+        { name: "Amenities", icon: FaUmbrellaBeach, path: "/admin/amenities" },
+        { name: "Categories", icon: FaList, path: "/admin/categories" },
         { name: "Bookings", icon: FaCalendarAlt, path: "/admin/bookings" },
     ];
 
