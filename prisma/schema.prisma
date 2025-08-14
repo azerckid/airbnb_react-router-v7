@@ -90,8 +90,16 @@ model Booking {
 
 model Review {
   id        String   @id @default(cuid())
-  rating    Int
+  rating    Int      // Overall rating
+  cleanliness Int    @default(5)
+  accuracy    Int    @default(5)
+  communication Int  @default(5)
+  location    Int    @default(5)
+  checkIn     Int    @default(5)
+  value       Int    @default(5)
+  
   comment   String
+  response  String?  // Host reply
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
