@@ -140,7 +140,24 @@ export default function NewRoom({ loaderData, actionData }: { loaderData: Loader
                 />
             </Box>
 
-            <Form method="post" id="room-form">
+            <Form
+                method="post"
+                id="room-form"
+                onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                        // If textarea, allow new lines
+                        if (e.target instanceof HTMLTextAreaElement) return;
+
+                        // Prevent default submission
+                        e.preventDefault();
+
+                        // If next is logically allowed, go to next step
+                        if (step < totalSteps && !isNextDisabled()) {
+                            nextStep();
+                        }
+                    }
+                }}
+            >
                 <VStack gap={8} align="stretch">
 
                     {/* STEP 1: Category */}
@@ -292,42 +309,6 @@ export default function NewRoom({ loaderData, actionData }: { loaderData: Loader
                         </VStack>
                     )}
 
-                    {/* Navigation Buttons */}
-                    <HStack justify="space-between" pt={8} borderTopWidth="1px">
-                        <Button
-                            variant="ghost"
-                            onClick={prevStep}
-                            disabled={step === 1}
-                            visibility={step === 1 ? "hidden" : "visible"}
-                        >
-                            Back
-                        </Button>
-
-                        {step < totalSteps ? (
-                            <Button
-                                colorPalette="black"
-                                onClick={nextStep}
-                                disabled={isNextDisabled()}
-                            >
-                                Next
-                            </Button>
-                        ) : (
-                            <Button
-                                type="submit"
-                                colorPalette="red"
-                                loading={isSubmitting}
-                                size="lg"
-                                px={8}
-                                onClick={(e) => {
-                                    e.preventDefault();
-                                    const form = e.currentTarget.closest("form");
-                                    if (form) form.requestSubmit();
-                                }}
-                            >
-                                Create Listing
-                            </Button>
-                        )}
-                    </HStack>
                 </VStack>
 
                 {/* Hidden Inputs to ensure all data is submitted regardless of current step */}
@@ -343,6 +324,45 @@ export default function NewRoom({ loaderData, actionData }: { loaderData: Loader
                     <input key={id} type="hidden" name="amenities" value={id} />
                 ))}
             </Form>
+
+            {/* Navigation Buttons - Moved OUTSIDE Form to prevent accidental submission */}
+            <HStack justify="space-between" pt={8} borderTopWidth="1px" mt={8}>
+                <Button
+                    variant="ghost"
+                    type="button"
+                    onClick={prevStep}
+                    disabled={step === 1}
+                    visibility={step === 1 ? "hidden" : "visible"}
+                >
+                    Back
+                </Button>
+
+                {step < totalSteps ? (
+                    <Button
+                        colorPalette="black"
+                        type="button"
+                        onClick={nextStep}
+                        disabled={isNextDisabled()}
+                    >
+                        Next
+                    </Button>
+                ) : (
+                    <Button
+                        type="button"
+                        colorPalette="red"
+                        loading={isSubmitting}
+                        size="lg"
+                        px={8}
+                        onClick={(e) => {
+                            e.preventDefault();
+                            const form = document.getElementById("room-form") as HTMLFormElement;
+                            if (form) form.requestSubmit();
+                        }}
+                    >
+                        Create Listing
+                    </Button>
+                )}
+            </HStack>
 
             {actionData?.error && (
                 <Box mt={4} p={4} bg="red.50" color="red.500" borderRadius="md">
