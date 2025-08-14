@@ -57,6 +57,17 @@ export async function loader({ request, params }: Route.LoaderArgs) {
         throw new Response("Room not found", { status: 404 });
     }
 
+    // Check if room is active
+    if (!room.isActive) {
+        // Since getUser is not available here, we might need to rely on requireUser if we want to allow owner access
+        // But for public view, if it's inactive, it should be hidden.
+        // Let's check if the user is the owner if we can.
+        // Using getUser from auth.server to get current user without requiring login
+        if (room.ownerId !== user?.id) {
+            throw new Response("Room not found", { status: 404 });
+        }
+    }
+
     return { room, user };
 }
 

@@ -88,13 +88,29 @@ export function Navigation({
                                         </Box>
                                         <Separator />
                                         {user?.isHost && (
-                                            <Menu.Item
-                                                value="upload"
-                                                onClick={() => navigate("/rooms/new")}
-                                                cursor="pointer"
-                                            >
-                                                방 업로드
-                                            </Menu.Item>
+                                            <>
+                                                <Menu.Item
+                                                    value="upload"
+                                                    onClick={() => navigate("/rooms/new")}
+                                                    cursor="pointer"
+                                                >
+                                                    방 업로드
+                                                </Menu.Item>
+                                                <Menu.Item
+                                                    value="host-rooms"
+                                                    onClick={() => navigate("/host/rooms")}
+                                                    cursor="pointer"
+                                                >
+                                                    방 관리 (Manage Listings)
+                                                </Menu.Item>
+                                                <Menu.Item
+                                                    value="host-bookings"
+                                                    onClick={() => navigate("/host/bookings")}
+                                                    cursor="pointer"
+                                                >
+                                                    예약 관리 (Manage Bookings)
+                                                </Menu.Item>
+                                            </>
                                         )}
                                         <Separator />
                                         <Menu.Item

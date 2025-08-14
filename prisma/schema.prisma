@@ -33,6 +33,7 @@ model Room {
   city        String?
   country     String?
   photo       String?  // Main photo, simplifies for valid MVP
+  isActive    Boolean  @default(true)
   // photos   Photo[] // Could be a separate model later
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

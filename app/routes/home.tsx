@@ -15,13 +15,16 @@ export function meta({ }: Route.MetaArgs) {
 
 export async function loader() {
   const rooms = await prisma.room.findMany({
+    where: {
+      isActive: true, // Only show active rooms
+    },
     include: {
+      owner: true,
+      amenities: true,
       category: true,
       reviews: true,
     },
-    orderBy: {
-      createdAt: "desc",
-    }
+    orderBy: { createdAt: "desc" },
   });
   return { rooms };
 }

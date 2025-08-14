@@ -9,6 +9,10 @@ export default [
     route("rooms/:roomId", "routes/rooms.$roomId.tsx"),
     route("trips", "routes/trips.tsx"),
 
+    // Host Routes
+    route("host/rooms", "routes/host.rooms.tsx"),
+    route("host/bookings", "routes/host.bookings.tsx"),
+
     // Admin Routes
     // Admin Routes
     route("admin", "routes/admin.tsx", [
