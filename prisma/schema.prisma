@@ -33,9 +33,10 @@ model Room {
   address     String?
   city        String?
   country     String?
-  photo       String?  // Main photo, simplifies for valid MVP
+  photo       String?  // Main photo
+  video       String?  // Main video
   isActive    Boolean  @default(true)
-  // photos   Photo[] // Could be a separate model later
+  photos      Photo[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -49,6 +50,15 @@ model Room {
   reviews     Review[]
   wishlists   Wishlist[]
   amenities   Amenity[]
+}
+
+model Photo {
+  id        String   @id @default(cuid())
+  url       String
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  roomId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Amenity {

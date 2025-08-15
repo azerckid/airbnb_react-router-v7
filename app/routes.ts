@@ -12,6 +12,8 @@ export default [
     // Host Routes
     route("host/rooms", "routes/host.rooms.tsx"),
     route("host/bookings", "routes/host.bookings.tsx"),
+    route("host/rooms/:roomId/photos", "routes/host.rooms.$roomId.photos.tsx"),
+
 
     route("wishlists", "routes/wishlists.tsx"),
     route("api/wishlist", "routes/api.wishlist.tsx"),

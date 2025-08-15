@@ -169,9 +169,14 @@ export default function HostRooms({ loaderData }: Route.ComponentProps) {
                                                 </Switch.Control>
                                             </Switch.Root>
                                         </HStack>
-                                        <Button asChild variant="outline" size="sm">
-                                            <Link to={`/rooms/${room.id}`}>View</Link>
-                                        </Button>
+                                        <HStack>
+                                            <Button variant="outline" size="sm" asChild>
+                                                <Link to={`/host/rooms/${room.id}/photos`}>Media</Link>
+                                            </Button>
+                                            <Button variant="outline" size="sm" asChild>
+                                                <Link to={`/rooms/${room.id}`}>View</Link>
+                                            </Button>
+                                        </HStack>
                                     </HStack>
                                 </HStack>
                             </Box>

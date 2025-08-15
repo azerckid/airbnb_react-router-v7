@@ -48,6 +48,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
             owner: true,
             category: true,
             amenities: true,
+            photos: true,
             reviews: {
                 include: { user: true },
                 orderBy: { createdAt: "desc" } // Show newest first
@@ -285,6 +286,7 @@ export default function RoomDetail({ loaderData }: Route.ComponentProps) {
 
 
                 {/* Img Grid - Keep Existing */}
+                {/* Img Grid - Dynamic */}
                 <Grid
                     templateColumns={{ base: "1fr", md: "1fr 1fr", lg: "2fr 1fr 1fr" }}
                     gap={2}
@@ -293,18 +295,33 @@ export default function RoomDetail({ loaderData }: Route.ComponentProps) {
                     overflow="hidden"
                     mt={6}
                 >
-                    {/* ... Images ... */}
-                    <Box gridColumn={{ base: "span 1", lg: "span 1" }} h="full">
-                        <Image src={room.photo || "https://placehold.co/1200x800"} alt={room.title} w="full" h="full" objectFit="cover" />
+                    {/* Main Photo (Index 0 or room.photo) */}
+                    <Box gridColumn={{ base: "span 1", lg: "span 1" }} h="full" position="relative">
+                        <Image
+                            src={room.photo || (room.photos[0] ? room.photos[0].url : "https://placehold.co/1200x800?text=No+Wait")}
+                            alt={room.title}
+                            w="full" h="full" objectFit="cover"
+                        />
                     </Box>
-                    {/* ... Placeholders ... */}
+
+                    {/* Secondary Photos */}
                     <Box display={{ base: "none", md: "block" }} h="full">
-                        <Image src="https://placehold.co/600x400?text=Room+2" alt="Room View 2" w="full" h="full" objectFit="cover" />
+                        <Image
+                            src={room.photos[1]?.url || "https://placehold.co/600x400?text=Photo+2"}
+                            alt="View 2"
+                            w="full" h="full" objectFit="cover"
+                        />
                     </Box>
                     <Box display={{ base: "none", lg: "block" }} h="full">
                         <VStack h="full" gap={2}>
-                            <Image src="https://placehold.co/600x400?text=Room+3" alt="Room View 3" w="full" h="50%" objectFit="cover" />
-                            <Image src="https://placehold.co/600x400?text=Room+4" alt="Room View 4" w="full" h="50%" objectFit="cover" />
+                            <Image
+                                src={room.photos[2]?.url || "https://placehold.co/600x400?text=Photo+3"}
+                                alt="View 3" w="full" h="50%" objectFit="cover"
+                            />
+                            <Image
+                                src={room.photos[3]?.url || "https://placehold.co/600x400?text=Photo+4"}
+                                alt="View 4" w="full" h="50%" objectFit="cover"
+                            />
                         </VStack>
                     </Box>
                 </Grid>
@@ -346,6 +363,20 @@ export default function RoomDetail({ loaderData }: Route.ComponentProps) {
                             )}
                         </Box>
                         <Separator />
+
+                        {room.video && (
+                            <Box>
+                                <Heading size="lg" mb={4}>Room Video</Heading>
+                                <Box borderRadius="xl" overflow="hidden" shadow="md" bg="black" aspectRatio={16 / 9}>
+                                    <video
+                                        src={room.video}
+                                        style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                                        controls
+                                    />
+                                </Box>
+                                <Separator mt={8} />
+                            </Box>
+                        )}
 
                         {/* Calendar - Keep Existing */}
 
