@@ -1,6 +1,7 @@
 import { Avatar, Box, Button, Container, HStack, IconButton, Menu, Separator, Stack, Text, VStack } from "@chakra-ui/react";
 import { Link as RouterLink, useNavigate, Form } from "react-router";
 import { FaMoon, FaSun } from "react-icons/fa";
+import { SearchModal } from "./SearchModal";
 // import type { IUser } from "~/types"; // Disable strict frontend type for now or update it
 
 interface NavigationProps {
@@ -32,6 +33,10 @@ export function Navigation({
                             </HStack>
                         </RouterLink>
                     </Button>
+
+                    {/* Search Bar */}
+                    <SearchModal />
+
                     <HStack gap={2}>
                         {onToggleAppearance && (
                             <IconButton
@@ -112,6 +117,20 @@ export function Navigation({
                                                 </Menu.Item>
                                             </>
                                         )}
+                                        <Menu.Item
+                                            value="profile"
+                                            onClick={() => navigate("/users/me")}
+                                            cursor="pointer"
+                                        >
+                                            프로필 수정 (Edit Profile)
+                                        </Menu.Item>
+                                        <Menu.Item
+                                            value="wishlists"
+                                            onClick={() => navigate("/wishlists")}
+                                            cursor="pointer"
+                                        >
+                                            위시리스트 (Wishlists)
+                                        </Menu.Item>
                                         <Separator />
                                         <Menu.Item
                                             value="logout"

@@ -13,6 +13,11 @@ export default [
     route("host/rooms", "routes/host.rooms.tsx"),
     route("host/bookings", "routes/host.bookings.tsx"),
 
+    route("wishlists", "routes/wishlists.tsx"),
+    route("api/wishlist", "routes/api.wishlist.tsx"),
+    route("users/me", "routes/users.me.tsx"),
+
+
     // Admin Routes
     // Admin Routes
     route("admin", "routes/admin.tsx", [
