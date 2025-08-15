@@ -22,6 +22,9 @@ model User {
   bookings  Booking[]
   reviews   Review[]
   wishlists Wishlist[]
+  messages  Message[]
+  conversations Conversation[]
+  experiences Experience[]
 }
 
 model Room {
@@ -52,13 +55,56 @@ model Room {
   amenities   Amenity[]
 }
 
+
+
 model Photo {
-  id        String   @id @default(cuid())
-  url       String
-  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  roomId    String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String      @id @default(cuid())
+  url          String
+  room         Room?       @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  roomId       String?
+  experience   Experience? @relation(fields: [experienceId], references: [id], onDelete: Cascade)
+  experienceId String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+}
+
+model Conversation {
+  id        String    @id @default(cuid())
+  users     User[]
+  messages  Message[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  payload        String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversationId String
+  read           Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model Experience {
+  id          String   @id @default(cuid())
+  title       String
+  country     String
+  city        String
+  price       Int
+  description String
+  address     String?
+  startedAt   String?
+  endTime     String?
+  hostId      String
+  host        User     @relation(fields: [hostId], references: [id], onDelete: Cascade)
+  photos      Photo[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  category    Category? @relation(fields: [categoryId], references: [id])
+  categoryId  String?
 }
 
 model Amenity {
@@ -80,6 +126,7 @@ model Category {
   updatedAt   DateTime @updatedAt
 
   rooms       Room[]
+  experiences Experience[]
 }
 
 model Booking {

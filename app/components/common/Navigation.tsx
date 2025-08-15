@@ -125,6 +125,13 @@ export function Navigation({
                                             프로필 수정 (Edit Profile)
                                         </Menu.Item>
                                         <Menu.Item
+                                            value="messages"
+                                            onClick={() => navigate("/messages")}
+                                            cursor="pointer"
+                                        >
+                                            메시지 (Messages)
+                                        </Menu.Item>
+                                        <Menu.Item
                                             value="wishlists"
                                             onClick={() => navigate("/wishlists")}
                                             cursor="pointer"

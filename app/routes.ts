@@ -17,6 +17,16 @@ export default [
 
     route("wishlists", "routes/wishlists.tsx"),
     route("api/wishlist", "routes/api.wishlist.tsx"),
+
+    route("messages", "routes/messages.tsx", [
+        route(":id", "routes/messages.$id.tsx"),
+    ]),
+    route("api/conversations/create", "routes/api.conversations.create.tsx"),
+
+    route("experiences", "routes/experiences._index.tsx"),
+    route("experiences/:experienceId", "routes/experiences.$experienceId.tsx"),
+    route("host/experiences/new", "routes/host.experiences.new.tsx"),
+
     route("users/me", "routes/users.me.tsx"),
 
 

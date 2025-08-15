@@ -334,6 +334,10 @@ export default function RoomDetail({ loaderData }: Route.ComponentProps) {
                             <VStack align="flex-start" gap={1}>
                                 <Heading size="lg">Hosted by {room.owner.name || room.owner.username}</Heading>
                                 <Text color="fg.muted">{room.category?.name} • {room.category?.description}</Text>
+                                <Form action="/api/conversations/create" method="post">
+                                    <input type="hidden" name="recipientId" value={room.owner.id} />
+                                    <Button type="submit" variant="outline" size="sm" mt={2}>Contact Host</Button>
+                                </Form>
                             </VStack>
                             <Avatar.Root size="lg">
                                 <Avatar.Image src={room.owner.avatar || undefined} />
