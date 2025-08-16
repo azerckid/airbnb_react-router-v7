@@ -1,0 +1,274 @@
+import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
+import { Document } from "@langchain/core/documents";
+import { prisma } from "~/db.server";
+import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
+import { StringOutputParser } from "@langchain/core/output_parsers";
+import { ChatPromptTemplate } from "@langchain/core/prompts";
+import { TaskType } from "@google/generative-ai";
+import fs from "fs";
+import path from "path";
+
+// === Custom Simple Vector Store ===
+class SimpleMemoryVectorStore {
+    public documents: (Document & { embedding?: number[] })[] = [];
+    private embeddings: GoogleGenerativeAIEmbeddings;
+
+    constructor(embeddings: GoogleGenerativeAIEmbeddings) {
+        this.embeddings = embeddings;
+    }
+
+    static async fromDocuments(docs: Document[], embeddings: GoogleGenerativeAIEmbeddings) {
+        const store = new SimpleMemoryVectorStore(embeddings);
+        await store.addDocuments(docs);
+        return store;
+    }
+
+    // Load from cached documents (with embeddings)
+    static fromCachedDocuments(cachedDocs: (Document & { embedding?: number[] })[], embeddings: GoogleGenerativeAIEmbeddings) {
+        const store = new SimpleMemoryVectorStore(embeddings);
+        store.documents = cachedDocs;
+        return store;
+    }
+
+    async addDocuments(docs: Document[]) {
+        if (docs.length === 0) return;
+
+        const texts = docs.map(d => d.pageContent);
+        console.log(`Generating embeddings for ${docs.length} documents...`);
+
+        // Batch processing for Free Tier safety
+        const BATCH_SIZE = 2;
+        const vectors: number[][] = [];
+
+        for (let i = 0; i < texts.length; i += BATCH_SIZE) {
+            const batchTexts = texts.slice(i, i + BATCH_SIZE);
+            console.log(`  - Embedding batch ${i / BATCH_SIZE + 1}/${Math.ceil(texts.length / BATCH_SIZE)}...`);
+
+            try {
+                const batchVectors = await this.embeddings.embedDocuments(batchTexts);
+                vectors.push(...batchVectors);
+
+                // Rate limit protection: Sleep 5s between batches
+                if (i + BATCH_SIZE < texts.length) {
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                }
+            } catch (e) {
+                console.error("Error embedding batch:", e);
+                // Optionally handle partial failures or rethrow
+                throw e;
+            }
+        }
+
+        docs.forEach((d, i) => {
+            const docWithEmbedding = d as (Document & { embedding?: number[] });
+            docWithEmbedding.embedding = vectors[i];
+            this.documents.push(docWithEmbedding);
+        });
+    }
+
+    async similaritySearch(query: string, k: number) {
+        // Embed query
+        const queryEmbedding = await this.embeddings.embedQuery(query);
+
+        const scored = this.documents
+            .filter(d => d.embedding) // Ensure embedding exists
+            .map(d => ({
+                doc: d,
+                score: this.cosineSimilarity(queryEmbedding, d.embedding!)
+            }));
+
+        // Sort descending by score
+        scored.sort((a, b) => b.score - a.score);
+        return scored.slice(0, k).map(s => s.doc);
+    }
+
+    private cosineSimilarity(a: number[], b: number[]) {
+        if (!a || !b || a.length !== b.length) return 0;
+        let dotProduct = 0;
+        let normA = 0;
+        let normB = 0;
+        for (let i = 0; i < a.length; i++) {
+            dotProduct += a[i] * b[i];
+            normA += a[i] * a[i];
+            normB += b[i] * b[i];
+        }
+        if (normA === 0 || normB === 0) return 0;
+        return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+    }
+}
+
+// Singleton pattern for VectorStore
+let vectorStore: SimpleMemoryVectorStore | null = null;
+const CACHE_FILE = path.join(process.cwd(), "embeddings_cache.json");
+
+export async function initializeVectorStore() {
+    if (vectorStore) return vectorStore;
+
+    const apiKey = process.env.GOOGLE_API_KEY;
+    if (!apiKey) {
+        console.error("GOOGLE_API_KEY is not set.");
+        // In dev, sometimes env is not loaded in this module scope immediately if not using Remix's specific loader env
+        // But usually process.env works.
+        // Fallback or throw? Throwing is safer.
+        // throw new Error("GOOGLE_API_KEY is not set in environment variables");
+        return null;
+    }
+
+    // 1. Check for Cache
+    if (fs.existsSync(CACHE_FILE)) {
+        try {
+            console.log("📂 Loading embeddings from cache...");
+            const cachedData = fs.readFileSync(CACHE_FILE, "utf-8");
+            const cachedDocs = JSON.parse(cachedData);
+            const embeddings = new GoogleGenerativeAIEmbeddings({ apiKey, taskType: TaskType.RETRIEVAL_DOCUMENT });
+            vectorStore = SimpleMemoryVectorStore.fromCachedDocuments(cachedDocs, embeddings);
+            console.log(`✅ Loaded ${cachedDocs.length} documents from cache.`);
+            return vectorStore;
+        } catch (e) {
+            console.error("Failed to load cache, regenerating...", e);
+        }
+    }
+
+    console.log("⚡ initializing Vector Store (Fetching & Embedding)...");
+
+    // 2. Fetch from DB if no cache
+    const rooms = await prisma.room.findMany({
+        take: 200, // Cover all seeded data (113+)
+        select: { id: true, title: true, description: true, city: true, price: true, category: { select: { name: true } } }
+    });
+
+    const embeddings = new GoogleGenerativeAIEmbeddings({
+        apiKey,
+        taskType: TaskType.RETRIEVAL_DOCUMENT
+    });
+
+    if (rooms.length === 0) {
+        vectorStore = new SimpleMemoryVectorStore(embeddings);
+        return vectorStore;
+    }
+
+    const docs = rooms.map((room) => new Document({
+        pageContent: `
+Title: ${room.title}
+Type: ${room.category?.name || "Stay"}
+Location: ${room.city}
+Price: $${room.price} per night
+Description: ${room.description}
+    `.trim(),
+        metadata: { id: room.id, title: room.title, city: room.city, price: room.price }
+    }));
+
+    // 3. Generate Embeddings
+    vectorStore = await SimpleMemoryVectorStore.fromDocuments(docs, embeddings);
+
+    // 4. Save Cache
+    try {
+        fs.writeFileSync(CACHE_FILE, JSON.stringify(vectorStore.documents, null, 2));
+        console.log("💾 Embeddings saved to cache.");
+    } catch (e) {
+        console.error("Failed to save cache:", e);
+    }
+
+    console.log(`✅ Vector Store initialized with ${docs.length} rooms.`);
+    return vectorStore;
+}
+
+export async function searchRooms(query: string, k = 4) {
+    const store = await initializeVectorStore();
+    if (!store) return [];
+    const results = await store.similaritySearch(query, k);
+    return results;
+}
+
+import { ChatOpenAI } from "@langchain/openai";
+
+export async function generateStreamingResponse(query: string) {
+    const apiKey = process.env.GOOGLE_API_KEY;
+    const openAIKey = process.env.OPENAI_API_KEY;
+
+    if (!apiKey) throw new Error("GOOGLE_API_KEY missing");
+
+    // 1. Retrieve context
+    let context = "";
+    try {
+        const docs = await searchRooms(query);
+        context = docs.map((d: Document) => d.pageContent).join("\n\n");
+    } catch (e) {
+        console.error("Retrieval failed:", e);
+        // Continue without context or fail? 
+        // If retrieval fails (embedding 429), we might still want to chat?
+        // But for "Concierge" functionality, retrieval is key. 
+        // For now, let's proceed with empty context if retrieval fails, or standard error.
+    }
+
+    const template = `
+You are an expert Airbnb Concierge. Your goal is to help users find the perfect place to stay.
+Use the following context (retrieved listings) to answer the user's question.
+
+If the user asks for a recommendation, recommend specific rooms from the context.
+Include the price and location in your recommendation.
+If the context doesn't have relevant rooms, say "I couldn't find any rooms matching your criteria," but try to be helpful.
+Do not make up listings that are not in the context.
+
+Context:
+{context}
+
+User Question: {question}
+
+Answer (in clean Markdown, use bullet points for listings):
+    `.trim();
+
+    const prompt = ChatPromptTemplate.fromTemplate(template);
+
+    // Helper to run chain with fallback
+    const runChain = async (model: any) => {
+        const chain = prompt.pipe(model).pipe(new StringOutputParser());
+        return chain.stream({
+            context,
+            question: query
+        });
+    };
+
+    try {
+        console.log("🤖 Trying Gemini 2.5 Flash...");
+        const geminiModel = new ChatGoogleGenerativeAI({
+            model: "gemini-2.5-flash",
+            apiKey,
+            streaming: true,
+        });
+        return await runChain(geminiModel);
+    } catch (geminiError) {
+        console.error("⚠️ Gemini failed, trying fallback...", geminiError);
+
+        if (openAIKey) {
+            console.log("🤖 Fallback to OpenAI GPT-4o-mini...");
+            try {
+                const openAIModel = new ChatOpenAI({
+                    modelName: "gpt-4o-mini",
+                    openAIApiKey: openAIKey,
+                    streaming: true,
+                    temperature: 0.7
+                });
+                return await runChain(openAIModel);
+            } catch (openAIError) {
+                console.error("⚠️ OpenAI also failed:", openAIError);
+                // Return a simple stream with the error message so the UI shows something
+                return new ReadableStream({
+                    start(controller) {
+                        controller.enqueue(new TextEncoder().encode("Sorry, both AI services are currently unavailable. Please check your API keys or quotas."));
+                        controller.close();
+                    }
+                });
+            }
+        } else {
+            console.error("❌ No OpenAI key found for fallback.");
+            // Return a simple stream with the error message
+            return new ReadableStream({
+                start(controller) {
+                    controller.enqueue(new TextEncoder().encode("I'm having trouble connecting to the AI service (Gemini). OpenAI fallback is not configured."));
+                    controller.close();
+                }
+            });
+        }
+    }
+}

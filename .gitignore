@@ -10,3 +10,6 @@
 *.db
 *.sqlite
 *.sqlite-journal
+
+# Generated Cache
+embeddings_cache.json
