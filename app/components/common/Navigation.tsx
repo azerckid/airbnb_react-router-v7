@@ -26,13 +26,18 @@ export function Navigation({
                     align="center"
                     w="full"
                 >
-                    <Button asChild variant="ghost" colorPalette="red">
-                        <RouterLink to="/">
-                            <HStack gap={2}>
-                                <Text fontWeight="bold" display={{ base: "none", md: "block" }}>Guest House Booking</Text>
-                            </HStack>
-                        </RouterLink>
-                    </Button>
+                    <HStack gap={1}>
+                        <Button asChild variant="ghost" colorPalette="red">
+                            <RouterLink to="/">
+                                <HStack gap={2}>
+                                    <Text fontWeight="bold" display={{ base: "none", md: "block" }}>Guest House Booking</Text>
+                                </HStack>
+                            </RouterLink>
+                        </Button>
+                        <Button asChild variant="ghost">
+                            <RouterLink to="/experiences">Experiences</RouterLink>
+                        </Button>
+                    </HStack>
 
                     {/* Search Bar */}
                     <SearchModal />
@@ -114,6 +119,13 @@ export function Navigation({
                                                     cursor="pointer"
                                                 >
                                                     예약 관리 (Manage Bookings)
+                                                </Menu.Item>
+                                                <Menu.Item
+                                                    value="host-experience"
+                                                    onClick={() => navigate("/host/experiences/new")}
+                                                    cursor="pointer"
+                                                >
+                                                    체험 호스팅 (Host Experience)
                                                 </Menu.Item>
                                             </>
                                         )}
