@@ -1,6 +1,7 @@
 
 import { StateGraph, END, START } from "@langchain/langgraph";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
+import { ChatOpenAI } from "@langchain/openai"; // Import OpenAI
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { StringOutputParser } from "@langchain/core/output_parsers";
 import { searchRooms } from "./ai.server"; // Reuse existing vector logic
@@ -16,6 +17,7 @@ interface AgentState {
 }
 
 const apiKey = process.env.GOOGLE_API_KEY;
+const openAIKey = process.env.OPENAI_API_KEY; // Get OpenAI Key
 
 // 2. Define Nodes
 
@@ -23,10 +25,21 @@ const apiKey = process.env.GOOGLE_API_KEY;
 // Decides if the user's input demands a DB search or just a chat.
 async function routerNode(state: AgentState) {
     console.log("🚦 Router: Classifying intent...", state.query);
+
+    // Gemini (Commented out)
+    /*
     const model = new ChatGoogleGenerativeAI({
         model: "gemini-2.5-flash",
         apiKey,
         temperature: 0, // Deterministic
+    });
+    */
+
+    // OpenAI
+    const model = new ChatOpenAI({
+        modelName: "gpt-4o-mini", // Use fast model for routing
+        openAIApiKey: openAIKey,
+        temperature: 0,
     });
 
     const template = `
@@ -57,9 +70,20 @@ Output only the category name ("GREETING" or "SEARCH").
 // Responds to simple greetings without any embedding/DB operations.
 async function greeterNode(state: AgentState) {
     console.log("👋 Greeter: Responding directly...");
+
+    // Gemini (Commented out)
+    /*
     const model = new ChatGoogleGenerativeAI({
         model: "gemini-2.5-flash",
         apiKey,
+    });
+    */
+
+    // OpenAI
+    const model = new ChatOpenAI({
+        modelName: "gpt-4o-mini",
+        openAIApiKey: openAIKey,
+        temperature: 0.7,
     });
 
     const template = `
@@ -89,20 +113,37 @@ Reply warmly and briefly. Offer to help them find a place to stay.
 async function searcherNode(state: AgentState) {
     console.log("🔍 Searcher: Looking up rooms...");
 
-    // 1. Search (Reuse existing logic)
+    // 1. Search (Smart Failover)
     let context = "";
     try {
-        const docs = await searchRooms(state.query);
+        console.log("🔍 Searcher: Trying Gemini Search (Free)...");
+        const docs = await searchRooms(state.query, 4, 'gemini');
         context = docs.map((d: Document) => d.pageContent).join("\n\n");
     } catch (e) {
-        console.error("Search failed (Rate Limit?):", e);
-        context = "System: Unable to retrieve listings due to high traffic using rate-limited API.";
+        console.warn("⚠️ Gemini Search failed (Rate Limit?), switching to OpenAI Search...", e);
+        try {
+            const docs = await searchRooms(state.query, 4, 'openai');
+            context = docs.map((d: Document) => d.pageContent).join("\n\n");
+        } catch (e2) {
+            console.error("❌ OpenAI Search also failed:", e2);
+            context = "System: Unable to retrieve listings due to high traffic.";
+        }
     }
 
     // 2. Generate Answer
+    // Gemini (Commented out)
+    /*
     const model = new ChatGoogleGenerativeAI({
         model: "gemini-2.5-flash",
         apiKey,
+    });
+    */
+
+    // OpenAI
+    const model = new ChatOpenAI({
+        modelName: "gpt-4o-mini", // Or gpt-4o if higher quality needed
+        openAIApiKey: openAIKey,
+        temperature: 0.7,
     });
 
     const template = `

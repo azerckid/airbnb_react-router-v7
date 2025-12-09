@@ -1,6 +1,6 @@
 import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
 import { Document } from "@langchain/core/documents";
-import { prisma } from "~/db.server";
+import { prisma } from "../db.server";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { StringOutputParser } from "@langchain/core/output_parsers";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
@@ -11,20 +11,20 @@ import path from "path";
 // === Custom Simple Vector Store ===
 class SimpleMemoryVectorStore {
     public documents: (Document & { embedding?: number[] })[] = [];
-    private embeddings: GoogleGenerativeAIEmbeddings;
+    private embeddings: GoogleGenerativeAIEmbeddings | OpenAIEmbeddings;
 
-    constructor(embeddings: GoogleGenerativeAIEmbeddings) {
+    constructor(embeddings: GoogleGenerativeAIEmbeddings | OpenAIEmbeddings) {
         this.embeddings = embeddings;
     }
 
-    static async fromDocuments(docs: Document[], embeddings: GoogleGenerativeAIEmbeddings) {
+    static async fromDocuments(docs: Document[], embeddings: GoogleGenerativeAIEmbeddings | OpenAIEmbeddings) {
         const store = new SimpleMemoryVectorStore(embeddings);
         await store.addDocuments(docs);
         return store;
     }
 
     // Load from cached documents (with embeddings)
-    static fromCachedDocuments(cachedDocs: (Document & { embedding?: number[] })[], embeddings: GoogleGenerativeAIEmbeddings) {
+    static fromCachedDocuments(cachedDocs: (Document & { embedding?: number[] })[], embeddings: GoogleGenerativeAIEmbeddings | OpenAIEmbeddings) {
         const store = new SimpleMemoryVectorStore(embeddings);
         store.documents = cachedDocs;
         return store;
@@ -97,54 +97,74 @@ class SimpleMemoryVectorStore {
     }
 }
 
-// Singleton pattern for VectorStore
-let vectorStore: SimpleMemoryVectorStore | null = null;
-const CACHE_FILE = path.join(process.cwd(), "embeddings_cache.json");
+import { OpenAIEmbeddings } from "@langchain/openai";
 
-export async function initializeVectorStore() {
-    if (vectorStore) return vectorStore;
+// Singleton pattern for VectorStore
+// We need separate stores for Gemini and OpenAI
+let vectorStoreGemini: SimpleMemoryVectorStore | null = null;
+let vectorStoreOpenAI: SimpleMemoryVectorStore | null = null;
+
+const CACHE_FILE_GEMINI = path.join(process.cwd(), "embeddings_cache.json");
+const CACHE_FILE_OPENAI = path.join(process.cwd(), "embeddings_cache_openai.json");
+
+export async function initializeVectorStore(provider: 'gemini' | 'openai' = 'gemini') {
+    if (provider === 'gemini' && vectorStoreGemini) return vectorStoreGemini;
+    if (provider === 'openai' && vectorStoreOpenAI) return vectorStoreOpenAI;
 
     const apiKey = process.env.GOOGLE_API_KEY;
-    if (!apiKey) {
-        console.error("GOOGLE_API_KEY is not set.");
-        // In dev, sometimes env is not loaded in this module scope immediately if not using Remix's specific loader env
-        // But usually process.env works.
-        // Fallback or throw? Throwing is safer.
-        // throw new Error("GOOGLE_API_KEY is not set in environment variables");
-        return null;
-    }
+    const openAIKey = process.env.OPENAI_API_KEY;
+
+    const cacheFile = provider === 'gemini' ? CACHE_FILE_GEMINI : CACHE_FILE_OPENAI;
 
     // 1. Check for Cache
-    if (fs.existsSync(CACHE_FILE)) {
+    if (fs.existsSync(cacheFile)) {
         try {
-            console.log("📂 Loading embeddings from cache...");
-            const cachedData = fs.readFileSync(CACHE_FILE, "utf-8");
+            console.log(`📂 Loading ${provider} embeddings from cache...`);
+            const cachedData = fs.readFileSync(cacheFile, "utf-8");
             const cachedDocs = JSON.parse(cachedData);
-            const embeddings = new GoogleGenerativeAIEmbeddings({ apiKey, taskType: TaskType.RETRIEVAL_DOCUMENT });
-            vectorStore = SimpleMemoryVectorStore.fromCachedDocuments(cachedDocs, embeddings);
-            console.log(`✅ Loaded ${cachedDocs.length} documents from cache.`);
-            return vectorStore;
+
+            let embeddings;
+            if (provider === 'gemini') {
+                if (!apiKey) throw new Error("GOOGLE_API_KEY missing");
+                embeddings = new GoogleGenerativeAIEmbeddings({ apiKey, taskType: TaskType.RETRIEVAL_DOCUMENT });
+            } else {
+                if (!openAIKey) throw new Error("OPENAI_API_KEY missing");
+                embeddings = new OpenAIEmbeddings({ openAIApiKey: openAIKey, modelName: "text-embedding-3-small" });
+            }
+
+            const store = SimpleMemoryVectorStore.fromCachedDocuments(cachedDocs, embeddings);
+            if (provider === 'gemini') vectorStoreGemini = store;
+            else vectorStoreOpenAI = store;
+
+            console.log(`✅ Loaded ${cachedDocs.length} documents from ${provider} cache.`);
+            return store;
         } catch (e) {
             console.error("Failed to load cache, regenerating...", e);
         }
     }
 
-    console.log("⚡ initializing Vector Store (Fetching & Embedding)...");
+    console.log(`⚡ initializing ${provider} Vector Store (Fetching & Embedding)...`);
 
     // 2. Fetch from DB if no cache
     const rooms = await prisma.room.findMany({
-        take: 200, // Cover all seeded data (113+)
+        take: 200,
         select: { id: true, title: true, description: true, city: true, price: true, category: { select: { name: true } } }
     });
 
-    const embeddings = new GoogleGenerativeAIEmbeddings({
-        apiKey,
-        taskType: TaskType.RETRIEVAL_DOCUMENT
-    });
+    let embeddings;
+    if (provider === 'gemini') {
+        if (!apiKey) throw new Error("GOOGLE_API_KEY missing");
+        embeddings = new GoogleGenerativeAIEmbeddings({ apiKey, taskType: TaskType.RETRIEVAL_DOCUMENT });
+    } else {
+        if (!openAIKey) throw new Error("OPENAI_API_KEY missing");
+        embeddings = new OpenAIEmbeddings({ openAIApiKey: openAIKey, modelName: "text-embedding-3-small" });
+    }
 
     if (rooms.length === 0) {
-        vectorStore = new SimpleMemoryVectorStore(embeddings);
-        return vectorStore;
+        const store = new SimpleMemoryVectorStore(embeddings);
+        if (provider === 'gemini') vectorStoreGemini = store;
+        else vectorStoreOpenAI = store;
+        return store;
     }
 
     const docs = rooms.map((room) => new Document({
@@ -159,22 +179,27 @@ Description: ${room.description}
     }));
 
     // 3. Generate Embeddings
-    vectorStore = await SimpleMemoryVectorStore.fromDocuments(docs, embeddings);
+    const store = await SimpleMemoryVectorStore.fromDocuments(docs, embeddings);
 
     // 4. Save Cache
     try {
-        fs.writeFileSync(CACHE_FILE, JSON.stringify(vectorStore.documents, null, 2));
-        console.log("💾 Embeddings saved to cache.");
+        fs.writeFileSync(cacheFile, JSON.stringify(store.documents, null, 2));
+        console.log(`💾 ${provider} embeddings saved to cache.`);
     } catch (e) {
         console.error("Failed to save cache:", e);
     }
 
+    if (provider === 'gemini') vectorStoreGemini = store;
+    else vectorStoreOpenAI = store;
+
     console.log(`✅ Vector Store initialized with ${docs.length} rooms.`);
-    return vectorStore;
+    return store;
 }
 
-export async function searchRooms(query: string, k = 4) {
-    const store = await initializeVectorStore();
+export async function searchRooms(query: string, k = 4, provider: 'gemini' | 'openai' = 'gemini') {
+    // If Gemini fails, we can fallback to OpenAI if implemented in the logic calling this
+    // For now, this function just forwards the provider choice.
+    const store = await initializeVectorStore(provider);
     if (!store) return [];
     const results = await store.similaritySearch(query, k);
     return results;
