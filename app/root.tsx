@@ -37,7 +37,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   return { user };
 }
 
-import { AiConcierge } from "~/components/ai-concierge";
+
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
@@ -53,7 +53,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           {children}
           <ScrollRestoration />
           <Scripts />
-          <AiConcierge />
+
         </Provider>
       </body>
     </html>

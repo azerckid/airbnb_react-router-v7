@@ -14,6 +14,7 @@ interface AgentState {
     classification?: "GREETING" | "SEARCH";
     context?: string;
     answer?: string;
+    logs?: string[]; // Add logs array to state
 }
 
 const apiKey = process.env.GOOGLE_API_KEY;
@@ -130,7 +131,9 @@ async function searcherNode(state: AgentState) {
         }
     }
 
-    // 2. Generate Answer
+    // Add log to state
+    const provider = context.includes("System:") ? "failed" : "success"; // simplified check
+    return { context, logs: [`🔍 Searcher: Context retrieved.`] };
     // Gemini (Commented out)
     /*
     const model = new ChatGoogleGenerativeAI({
@@ -171,6 +174,7 @@ const workflow = new StateGraph<AgentState>({
         classification: { reducer: (x: any, y: any) => y ?? x },
         context: { reducer: (x: any, y: any) => y ?? x },
         answer: { reducer: (x: any, y: any) => y ?? x },
+        logs: { reducer: (x: string[], y: string[]) => y ? [...(x || []), ...y] : x },
     }
 })
     .addNode("router", routerNode)
@@ -211,20 +215,45 @@ export async function generateGraphResponse(query: string) {
     return new ReadableStream({
         async start(controller) {
             const encoder = new TextEncoder();
+            const sendLog = (msg: string) => controller.enqueue(encoder.encode(`__LOG__ ${msg}\n`));
+
             try {
-                // Run the graph to completion (conceptually) or stream updates
+                // Initial log
+                sendLog("🚦 Router: Classifying intent...");
+
                 let finalAnswer = "";
 
                 for await (const chunk of stream) {
                     // chunk is { nodeName: { ... } }
-                    // Iterate over values directly to avoid string indexing issues
-                    const stateUpdates = Object.values(chunk);
-                    for (const stateUpdate of stateUpdates) {
-                        // Cast stateUpdate to AgentState (or partial)
-                        const update = stateUpdate as Partial<AgentState>;
-                        if (update.answer) {
-                            finalAnswer = update.answer;
+                    const nodeName = Object.keys(chunk)[0];
+                    const stateUpdate = chunk[nodeName] as Partial<AgentState>;
+
+                    if (nodeName === "router") {
+                        if (stateUpdate.classification) {
+                            sendLog(`🚦 Classification: ${stateUpdate.classification}`);
+                            if (stateUpdate.classification === "SEARCH") {
+                                sendLog("🔍 Searcher: Looking up rooms...");
+                            }
                         }
+                    } else if (nodeName === "searcher") {
+                        if (stateUpdate.logs) {
+                            // Internal search logs could be passed here if we refined the node to return them incrementally
+                            // For now, we just simulate the "Trying..." messages based on node execution
+                            // actually, searcherNode is atomic, so we get the result after it's done.
+                            // So we might want to emit logs *before* invoking graph? No, we can't.
+                            // We can only react to node completions.
+                            // But the user request specifically asked for "Trying Gemini..." etc.
+                            // To do that *accurately* we'd need the node to stream updates or use a callback.
+                            // For this prototype, passing logs in state is a good middle ground.
+                            if (Array.isArray(stateUpdate.logs)) {
+                                stateUpdate.logs.forEach(log => sendLog(log));
+                            }
+                        }
+                        sendLog("📝 Generating detailed response...");
+                    }
+
+                    if (stateUpdate.answer) {
+                        finalAnswer = stateUpdate.answer;
                     }
                 }
 

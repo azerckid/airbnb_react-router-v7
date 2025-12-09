@@ -1,6 +1,6 @@
 import { Avatar, Box, Button, Container, HStack, IconButton, Menu, Separator, Stack, Text, VStack } from "@chakra-ui/react";
 import { Link as RouterLink, useNavigate, Form } from "react-router";
-import { FaMoon, FaSun } from "react-icons/fa";
+import { FaMoon, FaSun, FaRobot } from "react-icons/fa";
 import { SearchModal } from "./SearchModal";
 // import type { IUser } from "~/types"; // Disable strict frontend type for now or update it
 
@@ -36,6 +36,14 @@ export function Navigation({
                         </Button>
                         <Button asChild variant="ghost">
                             <RouterLink to="/experiences">Experiences</RouterLink>
+                        </Button>
+                        <Button asChild variant="ghost" colorPalette="cyan">
+                            <RouterLink to="/concierge">
+                                <HStack gap={2}>
+                                    <FaRobot />
+                                    <Text>AI Concierge</Text>
+                                </HStack>
+                            </RouterLink>
                         </Button>
                     </HStack>
 
