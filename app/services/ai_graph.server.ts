@@ -5,13 +5,14 @@ import { ChatOpenAI } from "@langchain/openai"; // Import OpenAI
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { StringOutputParser } from "@langchain/core/output_parsers";
 import { searchRooms } from "./ai.server"; // Reuse existing vector logic
+import { searchFlights } from "./flight.server";
 import { Document } from "@langchain/core/documents";
 
 // 1. Define State
 // We need to pass the user query and potentially the retrieved context or final answer
 interface AgentState {
     query: string;
-    classification?: "GREETING" | "SEARCH";
+    classification?: "GREETING" | "SEARCH" | "FLIGHT";
     context?: string;
     answer?: string;
     logs?: string[]; // Add logs array to state
@@ -44,13 +45,14 @@ async function routerNode(state: AgentState) {
     });
 
     const template = `
-Classify the following user input into one of two categories:
-1. "GREETING": Simple hellos, thankyous, or general small talk that DOES NOT require looking up specific room/travel information.
-2. "SEARCH": Questions about rooms, travel, prices, locations, amenities, or specific recommendations.
+Classify the following user input into one of three categories:
+1. "GREETING": Simple hellos, thankyous, or general small talk that DOES NOT require looking up specific information.
+2. "FLIGHT": Questions about flights, airplane tickets, airline routes, or searching for flights (e.g., "flight to Tokyo", "ticket price").
+3. "SEARCH": Questions about rooms, accommodation, travel tips, amenities, or specific property recommendations.
 
 Input: {query}
 
-Output only the category name ("GREETING" or "SEARCH").
+Output only the category name ("GREETING", "FLIGHT", or "SEARCH").
     `.trim();
 
     const prompt = ChatPromptTemplate.fromTemplate(template);
@@ -58,13 +60,88 @@ Output only the category name ("GREETING" or "SEARCH").
 
     try {
         const result = await chain.invoke({ query: state.query });
-        const classification = result.trim().toUpperCase() as "GREETING" | "SEARCH";
+        const classification = result.trim().toUpperCase() as "GREETING" | "SEARCH" | "FLIGHT";
         console.log("🚦 Classification:", classification);
         return { classification };
     } catch (e) {
         console.error("Router failed, defaulting to SEARCH", e);
         return { classification: "SEARCH" };
     }
+}
+
+// --- Node 1.5: Flight Searcher ---
+async function flightNode(state: AgentState) {
+    console.log("✈️ Flight Node: Processing...");
+    const model = new ChatOpenAI({
+        modelName: "gpt-4o-mini",
+        openAIApiKey: openAIKey,
+        temperature: 0,
+    });
+
+    // Step 1: Extract Parameters
+    const extractionTemplate = `
+You are a flight search assistant. Extract the following parameters from the user query:
+- origin (IATA code, e.g., ICN, JFK. If city name is given, convert to IATA. Default to ICN if implied as starting point from Korea)
+- destination (IATA code)
+- departureDate (YYYY-MM-DD format. If "next Monday" etc., calculate based on today: ${new Date().toISOString().split('T')[0]})
+
+Return ONLY a JSON object:
+{{
+  "origin": "IATA",
+  "destination": "IATA",
+  "departureDate": "YYYY-MM-DD"
+}}
+If any information is missing and cannot be reasonably inferred, return "MISSING: <missing_field_name>" in that field.
+Query: {query}
+    `.trim();
+
+    const extractionChain = ChatPromptTemplate.fromTemplate(extractionTemplate)
+        .pipe(model)
+        .pipe(new StringOutputParser());
+
+    let params: any = {};
+    try {
+        const jsonStr = await extractionChain.invoke({ query: state.query });
+        // Clean markdown code blocks if present
+        const cleanJson = jsonStr.replace(/```json/g, "").replace(/```/g, "").trim();
+        params = JSON.parse(cleanJson);
+    } catch (e) {
+        console.error("Flight param extraction failed", e);
+        return { answer: "Sorry, I couldn't understand the flight details. Please provide origin, destination, and date." };
+    }
+
+    if (params.origin?.startsWith("MISSING") || params.destination?.startsWith("MISSING") || params.departureDate?.startsWith("MISSING")) {
+        return { answer: `I need a bit more info to find flights. Please specify: ${[params.origin, params.destination, params.departureDate].filter(p => p?.startsWith("MISSING")).map(p => p.split(": ")[1]).join(", ")}.` };
+    }
+
+    // Step 2: Search Flights
+    const flightResults = await searchFlights(params.origin, params.destination, params.departureDate);
+
+    // Step 3: Generate Response
+    if (typeof flightResults === "string") {
+        return { answer: flightResults, logs: [`✈️ Search result: ${flightResults}`] };
+    }
+
+    const context = JSON.stringify(flightResults, null, 2);
+    const responseTemplate = `
+You are a travel agent. Here are the flight offers found:
+{context}
+
+User Query: {query}
+
+Summarize these flights for the user. Mention airline, price, and duration.
+    `.trim();
+
+    const responseChain = ChatPromptTemplate.fromTemplate(responseTemplate)
+        .pipe(model)
+        .pipe(new StringOutputParser());
+
+    const answer = await responseChain.invoke({ context, query: state.query });
+
+    return {
+        answer,
+        logs: [`✈️ Found ${flightResults.length} flights from ${params.origin} to ${params.destination}.`]
+    };
 }
 
 // --- Node 2: Greeter (Fast Chat) ---
@@ -200,13 +277,18 @@ const workflow = new StateGraph<any>({
     .addNode("router", routerNode as any)
     .addNode("greeter", greeterNode as any)
     .addNode("searcher", searcherNode as any)
+    .addNode("flight", flightNode as any)
     .addEdge(START, "router")
     .addConditionalEdges(
         "router",
-        (state: any) => state.classification === "GREETING" ? "greeter" : "searcher"
+        (state: any) => {
+            if (state.classification === "FLIGHT") return "flight";
+            return state.classification === "GREETING" ? "greeter" : "searcher";
+        }
     )
     .addEdge("greeter", END)
-    .addEdge("searcher", END);
+    .addEdge("searcher", END)
+    .addEdge("flight", END);
 
 export const graph = workflow.compile();
 
@@ -253,23 +335,19 @@ export async function generateGraphResponse(query: string) {
                             sendLog(`🚦 Classification: ${stateUpdate.classification}`);
                             if (stateUpdate.classification === "SEARCH") {
                                 sendLog("🔍 Searcher: Looking up rooms...");
+                            } else if (stateUpdate.classification === "FLIGHT") {
+                                sendLog("✈️ Flight Agent: Extracting details & Searching Amadeus...");
                             }
                         }
                     } else if (nodeName === "searcher") {
-                        if (stateUpdate.logs) {
-                            // Internal search logs could be passed here if we refined the node to return them incrementally
-                            // For now, we just simulate the "Trying..." messages based on node execution
-                            // actually, searcherNode is atomic, so we get the result after it's done.
-                            // So we might want to emit logs *before* invoking graph? No, we can't.
-                            // We can only react to node completions.
-                            // But the user request specifically asked for "Trying Gemini..." etc.
-                            // To do that *accurately* we'd need the node to stream updates or use a callback.
-                            // For this prototype, passing logs in state is a good middle ground.
-                            if (Array.isArray(stateUpdate.logs)) {
-                                stateUpdate.logs.forEach(log => sendLog(log));
-                            }
+                        if (stateUpdate.logs && Array.isArray(stateUpdate.logs)) {
+                            stateUpdate.logs.forEach(log => sendLog(log));
                         }
                         sendLog("📝 Generating detailed response...");
+                    } else if (nodeName === "flight") {
+                        if (stateUpdate.logs && Array.isArray(stateUpdate.logs)) {
+                            stateUpdate.logs.forEach(log => sendLog(log));
+                        }
                     }
 
                     if (stateUpdate.answer) {
