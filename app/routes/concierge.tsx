@@ -103,7 +103,7 @@ export default function Concierge() {
         setIsLoading(true);
         if (isMobile) setSidebarOpen(false);
         try {
-            const res = await fetch(`/api/chat_history?conversationId=${id}`);
+            const res = await fetch(`/api/chat_history?id=${id}`);
             if (res.ok) {
                 const data = await res.json();
                 if (data.conversation && data.conversation.messages) {
