@@ -78,7 +78,7 @@ export default function MessagesLayout({ loaderData }: Route.ComponentProps) {
                                                             </Text>
                                                         )}
                                                     </HStack>
-                                                    <Text fontSize="sm" color="gray.600" noOfLines={1}>
+                                                    <Text fontSize="sm" color="gray.600" lineClamp={1}>
                                                         {lastMessage ? lastMessage.payload : "Start a conversation"}
                                                     </Text>
                                                 </VStack>

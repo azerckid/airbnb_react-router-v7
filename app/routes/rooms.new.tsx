@@ -65,6 +65,12 @@ export async function action({ request }: ActionFunctionArgs) {
                 },
             },
         });
+
+        // Trigger AI updates (non-blocking)
+        import("~/services/ai.server").then(({ updateVectorStore }) => {
+            updateVectorStore(room.id).catch(console.error);
+        });
+
         return redirect(`/rooms/${room.id}`);
     } catch (e) {
         console.error(e);

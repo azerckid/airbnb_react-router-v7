@@ -195,7 +195,7 @@ export function RoomBookingCalendar({ roomPk }: RoomBookingCalendarProps) {
                                                 예약 목록 ({bookingStatus.summary.total_bookings}건)
                                             </Text>
                                             <VStack align="stretch" gap={2}>
-                                                {bookingStatus.bookings.room_bookings.map((booking) => (
+                                                {bookingStatus.bookings.room_bookings.map((booking: { pk: string; check_in: string; check_out: string; guests: number; price: number }) => (
                                                     <Box
                                                         key={booking.pk}
                                                         p={2}
@@ -251,14 +251,14 @@ export function RoomBookingCalendar({ roomPk }: RoomBookingCalendarProps) {
                     </Text>
                     {checkBookingData.details && (
                         <VStack align="stretch" gap={1} mt={2}>
-                            {checkBookingData.reason === "INSUFFICIENT_BEDS" && checkBookingData.details.available_beds !== undefined && (
+                            {checkBookingData.reason === "INSUFFICIENT_BEDS" && checkBookingData.details?.available_beds !== undefined && (
                                 <Text color="red.400" fontSize="xs">
                                     사용 가능한 침대: {checkBookingData.details.available_beds}개
-                                    {checkBookingData.details.room_capacity !== undefined &&
+                                    {checkBookingData.details?.room_capacity !== undefined &&
                                         ` / 전체 침대: ${checkBookingData.details.room_capacity}개`}
                                 </Text>
                             )}
-                            {checkBookingData.reason === "EXCEEDS_CAPACITY" && checkBookingData.details.room_capacity !== undefined && (
+                            {checkBookingData.reason === "EXCEEDS_CAPACITY" && checkBookingData.details?.room_capacity !== undefined && (
                                 <Text color="red.400" fontSize="xs">
                                     최대 수용 인원: {checkBookingData.details.room_capacity}명
                                 </Text>

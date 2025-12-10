@@ -19,14 +19,31 @@ interface Message {
 }
 
 export default function Concierge() {
-    const [messages, setMessages] = useState<Message[]>([
-        { role: "ai", text: "Hello! I am your Airbnb Concierge. How can I help you find a place today?" }
-    ]);
+    const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
 
+    // Load from sessionStorage on mount
     useEffect(() => {
+        const saved = sessionStorage.getItem("ai_chat_history");
+        if (saved) {
+            try {
+                setMessages(JSON.parse(saved));
+            } catch (e) {
+                console.error("Failed to parse chat history", e);
+            }
+        } else {
+            // Initial greeting if no history
+            setMessages([{ role: "ai", text: "Hello! I am your Airbnb Concierge. How can I help you find a place today?" }]);
+        }
+    }, []);
+
+    // Save to sessionStorage whenever messages change
+    useEffect(() => {
+        if (messages.length > 0) {
+            sessionStorage.setItem("ai_chat_history", JSON.stringify(messages));
+        }
         if (scrollRef.current) {
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }

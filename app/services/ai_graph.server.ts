@@ -116,35 +116,47 @@ async function searcherNode(state: AgentState) {
 
     // 1. Search (Smart Failover)
     let context = "";
+    let extraLogs: string[] = [];
+
     try {
         console.log("🔍 Searcher: Trying Gemini Search (Free)...");
-        const docs = await searchRooms(state.query, 4, 'gemini');
+
+        // 3-second timeout promise
+        const timeout = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("Timeout (3000ms)")), 3000)
+        );
+
+        // Race actual search against timeout
+        const docs = await Promise.race([
+            searchRooms(state.query, 4, 'gemini'),
+            timeout
+        ]) as Document[];
+
         context = docs.map((d: Document) => d.pageContent).join("\n\n");
-    } catch (e) {
-        console.warn("⚠️ Gemini Search failed (Rate Limit?), switching to OpenAI Search...", e);
+    } catch (e: any) {
+        console.warn(`⚠️ Gemini Search failed (${e.message || "Unknown"}), switching to OpenAI Search...`);
+        extraLogs.push(`⚠️ Gemini Search failed (${e.message}), switching to OpenAI...`);
+
         try {
             const docs = await searchRooms(state.query, 4, 'openai');
             context = docs.map((d: Document) => d.pageContent).join("\n\n");
+            extraLogs.push("✅ OpenAI Search successful.");
         } catch (e2) {
             console.error("❌ OpenAI Search also failed:", e2);
             context = "System: Unable to retrieve listings due to high traffic.";
+            extraLogs.push("❌ OpenAI Search also failed.");
         }
     }
 
     // Add log to state
-    const provider = context.includes("System:") ? "failed" : "success"; // simplified check
-    return { context, logs: [`🔍 Searcher: Context retrieved.`] };
-    // Gemini (Commented out)
-    /*
-    const model = new ChatGoogleGenerativeAI({
-        model: "gemini-2.5-flash",
-        apiKey,
-    });
-    */
+    // Add log to state
+    // const provider = context.includes("System:") ? "failed" : "success"; 
+    // return { context, logs: [`🔍 Searcher: Context retrieved (${context.length} chars).`, ...extraLogs] };
 
-    // OpenAI
+    // 2. Generate Answer
+    // OpenAI (Using gpt-4o-mini for reliable and fast response)
     const model = new ChatOpenAI({
-        modelName: "gpt-4o-mini", // Or gpt-4o if higher quality needed
+        modelName: "gpt-4o-mini",
         openAIApiKey: openAIKey,
         temperature: 0.7,
     });
@@ -157,18 +169,26 @@ Context (Listings):
 User Question: {query}
 
 Recommend specific rooms from the context. If no context, apologize and ask them to try again later.
+Use clean Markdown.
     `.trim();
 
     const prompt = ChatPromptTemplate.fromTemplate(template);
     const chain = prompt.pipe(model).pipe(new StringOutputParser());
 
     const response = await chain.invoke({ context, query: state.query });
-    return { answer: response };
+
+    return {
+        answer: response,
+        context,
+        logs: [`🔍 Searcher: Context retrieved (${context.length} chars).`, ...extraLogs]
+    };
+
 }
 
 
 // 3. Build Graph
-const workflow = new StateGraph<AgentState>({
+// 3. Build Graph
+const workflow = new StateGraph<any>({
     channels: {
         query: { reducer: (x: string, y: string) => y ?? x },
         classification: { reducer: (x: any, y: any) => y ?? x },
@@ -177,13 +197,13 @@ const workflow = new StateGraph<AgentState>({
         logs: { reducer: (x: string[], y: string[]) => y ? [...(x || []), ...y] : x },
     }
 })
-    .addNode("router", routerNode)
-    .addNode("greeter", greeterNode)
-    .addNode("searcher", searcherNode)
+    .addNode("router", routerNode as any)
+    .addNode("greeter", greeterNode as any)
+    .addNode("searcher", searcherNode as any)
     .addEdge(START, "router")
     .addConditionalEdges(
         "router",
-        (state) => state.classification === "GREETING" ? "greeter" : "searcher"
+        (state: any) => state.classification === "GREETING" ? "greeter" : "searcher"
     )
     .addEdge("greeter", END)
     .addEdge("searcher", END);
@@ -226,7 +246,7 @@ export async function generateGraphResponse(query: string) {
                 for await (const chunk of stream) {
                     // chunk is { nodeName: { ... } }
                     const nodeName = Object.keys(chunk)[0];
-                    const stateUpdate = chunk[nodeName] as Partial<AgentState>;
+                    const stateUpdate = (chunk as any)[nodeName] as Partial<AgentState>;
 
                     if (nodeName === "router") {
                         if (stateUpdate.classification) {

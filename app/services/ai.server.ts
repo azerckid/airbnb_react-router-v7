@@ -4,6 +4,7 @@ import { prisma } from "../db.server";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { StringOutputParser } from "@langchain/core/output_parsers";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
+import { ChatOpenAI } from "@langchain/openai"; // Added missing import
 import { TaskType } from "@google/generative-ai";
 import fs from "fs";
 import path from "path";
@@ -196,6 +197,16 @@ Description: ${room.description}
     return store;
 }
 
+// 2. Fetch from DB if no cache
+// const rooms = await prisma.room.findMany({
+//     take: 200,
+//     select: { id: true, title: true, description: true, city: true, price: true, category: { select: { name: true } } }
+// });
+
+// (Previous edit artifact removal: The previous edit inserted a partial function copy. 
+// I need to clean up the mess at lines 200-211 which duplicates logic and adds a brace)
+
+
 export async function searchRooms(query: string, k = 4, provider: 'gemini' | 'openai' = 'gemini') {
     // If Gemini fails, we can fallback to OpenAI if implemented in the logic calling this
     // For now, this function just forwards the provider choice.
@@ -205,7 +216,75 @@ export async function searchRooms(query: string, k = 4, provider: 'gemini' | 'op
     return results;
 }
 
-import { ChatOpenAI } from "@langchain/openai";
+// === Real-time Update Function ===
+export async function updateVectorStore(roomId: string) {
+    console.log(`⚡ Updating Vector Store for room ${roomId}...`);
+
+    // 1. Fetch the new room
+    const room = await prisma.room.findUnique({
+        where: { id: roomId },
+        select: { id: true, title: true, description: true, city: true, price: true, category: { select: { name: true } } }
+    });
+
+    if (!room) {
+        console.error(`❌ Room ${roomId} not found for vector update.`);
+        return;
+    }
+
+    // 2. Refresh both stores if they exist (or initialize them)
+    // We try to add to both to keep them in sync if used.
+    const providers: ('gemini' | 'openai')[] = ['gemini', 'openai'];
+
+    for (const provider of providers) {
+        // Only update if store is already initialized or we want to force init?
+        // Let's just try to get the store. If not initialized, this will init it with ALL rooms including new one.
+        // If initialized, we should add this one document.
+
+        let store;
+        if (provider === 'gemini') store = vectorStoreGemini;
+        else store = vectorStoreOpenAI;
+
+        if (store) {
+            // Store exists, append single document
+            const doc = new Document({
+                pageContent: `
+Title: ${room.title}
+Type: ${room.category?.name || "Stay"}
+Location: ${room.city}
+Price: $${room.price} per night
+Description: ${room.description}
+            `.trim(),
+                metadata: { id: room.id, title: room.title, city: room.city, price: room.price }
+            });
+
+            // We need embedding.
+            // SimpleMemoryVectorStore.addDocuments handles embedding generation.
+            await store.addDocuments([doc]);
+
+            // Save cache (optional but good for persistence across quick restarts if file based)
+            const cacheFile = provider === 'gemini' ? CACHE_FILE_GEMINI : CACHE_FILE_OPENAI;
+            try {
+                fs.writeFileSync(cacheFile, JSON.stringify(store.documents, null, 2));
+                console.log(`💾 ${provider} cache updated with new room.`);
+            } catch (e) {
+                console.error("Failed to update cache file:", e);
+            }
+
+        } else {
+            // Store not loaded yet. initializeVectorStore will fetch DB (including new room) automatically.
+            // So we don't need to do anything explicit here, checking init is enough? 
+            // BUT, if we want to ensure it's ready:
+            // await initializeVectorStore(provider); 
+            // Doing this might be heavy if we just want to update. 
+            // Let's skip valid update if store is offline to save resources, 
+            // as next init will pick it up.
+            console.log(`ℹ️ ${provider} store not loaded, skipping incremental update.`);
+        }
+    }
+}
+
+
+// import { ChatOpenAI } from "@langchain/openai"; // Already imported at top
 
 export async function generateStreamingResponse(query: string) {
     const apiKey = process.env.GOOGLE_API_KEY;
