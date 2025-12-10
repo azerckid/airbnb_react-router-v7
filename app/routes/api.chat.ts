@@ -1,5 +1,5 @@
 import { type ActionFunctionArgs } from "react-router";
-import { generateGraphResponse } from "../services/ai_graph.server";
+import { generateGraphResponse } from "../services/ai/graph.server";
 import { getUser } from "~/services/auth.server";
 import { prisma } from "~/db.server";
 

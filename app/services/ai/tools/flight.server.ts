@@ -1,6 +1,6 @@
 
 // @ts-ignore
-import Amadeus from 'amadeus';
+import Amadeus from "amadeus";
 
 // Initialize Amadeus client
 // Note: Amadeus constructor might not be fully typed depending on the valid types package version.

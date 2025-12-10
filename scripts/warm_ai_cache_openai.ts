@@ -1,6 +1,6 @@
 
 import "dotenv/config";
-import { initializeVectorStore } from "../app/services/ai.server";
+import { initializeVectorStore } from "../app/services/ai/core.server";
 
 console.log("🔥 Warming up OpenAI Embedding Cache...");
 // Call with 'openai' provider to generate embeddings_cache_openai.json

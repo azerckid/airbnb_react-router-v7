@@ -1,6 +1,6 @@
 
 import "dotenv/config"; // Load env vars
-import { initializeVectorStore } from "../app/services/ai.server";
+import { initializeVectorStore } from "../app/services/ai/core.server";
 
 console.log("🔥 Warming up AI Cache...");
 initializeVectorStore()

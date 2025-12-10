@@ -67,7 +67,7 @@ export async function action({ request }: ActionFunctionArgs) {
         });
 
         // Trigger AI updates (non-blocking)
-        import("~/services/ai.server").then(({ updateVectorStore }) => {
+        import("~/services/ai/core.server").then(({ updateVectorStore }) => {
             updateVectorStore(room.id).catch(console.error);
         });
 
