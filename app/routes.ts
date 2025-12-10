@@ -24,6 +24,7 @@ export default [
     ]),
     route("api/conversations/create", "routes/api.conversations.create.tsx"),
     route("api/chat", "routes/api.chat.ts"),
+    route("api/chat_history", "routes/api.chat_history.ts"),
 
     route("experiences", "routes/experiences._index.tsx"),
     route("experiences/:experienceId", "routes/experiences.$experienceId.tsx"),

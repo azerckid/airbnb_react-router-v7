@@ -4,7 +4,6 @@ generator client {
 
 datasource db {
   provider = "sqlite"
-  url      = env("DATABASE_URL")
 }
 
 model User {
@@ -19,13 +18,34 @@ model User {
   isAdmin   Boolean  @default(false)
   isHost    Boolean  @default(false)
 
-  rooms     Room[]
-  bookings  Booking[]
-  reviews   Review[]
-  wishlists Wishlist[]
-  messages  Message[]
+  rooms         Room[]
+  bookings      Booking[]
+  reviews       Review[]
+  wishlists     Wishlist[]
+  messages      Message[]
   conversations Conversation[]
-  experiences Experience[]
+  experiences   Experience[]
+
+  aiConversations AiConversation[]
+}
+
+model AiConversation {
+  id        String      @id @default(cuid())
+  title     String? // Auto-generated title
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  AiMessage[]
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+}
+
+model AiMessage {
+  id               String         @id @default(cuid())
+  role             String // "user" or "assistant"
+  content          String
+  aiConversationId String
+  aiConversation   AiConversation @relation(fields: [aiConversationId], references: [id], onDelete: Cascade)
+  createdAt        DateTime       @default(now())
 }
 
 model Room {
@@ -37,26 +57,24 @@ model Room {
   address     String?
   city        String?
   country     String?
-  photo       String?  // Main photo
-  video       String?  // Main video
+  photo       String? // Main photo
+  video       String? // Main video
   isActive    Boolean  @default(true)
   photos      Photo[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  ownerId     String
-  owner       User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
-  categoryId  String?
-  category    Category? @relation(fields: [categoryId], references: [id])
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id])
 
-  bookings    Booking[]
-  reviews     Review[]
-  wishlists   Wishlist[]
-  amenities   Amenity[]
+  bookings  Booking[]
+  reviews   Review[]
+  wishlists Wishlist[]
+  amenities Amenity[]
 }
-
-
 
 model Photo {
   id           String      @id @default(cuid())
@@ -90,7 +108,7 @@ model Message {
 }
 
 model Experience {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   title       String
   country     String
   city        String
@@ -100,10 +118,10 @@ model Experience {
   startedAt   String?
   endTime     String?
   hostId      String
-  host        User     @relation(fields: [hostId], references: [id], onDelete: Cascade)
+  host        User      @relation(fields: [hostId], references: [id], onDelete: Cascade)
   photos      Photo[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   category    Category? @relation(fields: [categoryId], references: [id])
   categoryId  String?
 }
@@ -115,14 +133,14 @@ model Amenity {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  rooms       Room[]
+  rooms Room[]
 }
 
 model Category {
   id          String   @id @default(cuid())
   name        String   @unique
   description String?
-  icon        String?  // Name of the icon (e.g., FaUmbrellaBeach)
+  icon        String? // Name of the icon (e.g., FaUmbrellaBeach)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -140,33 +158,33 @@ model Booking {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  roomId    String
-  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  roomId String
+  room   Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
 }
 
 model Review {
-  id        String   @id @default(cuid())
-  rating    Int      // Overall rating
-  cleanliness Int    @default(5)
-  accuracy    Int    @default(5)
-  communication Int  @default(5)
-  location    Int    @default(5)
-  checkIn     Int    @default(5)
-  value       Int    @default(5)
-  
+  id            String @id @default(cuid())
+  rating        Int // Overall rating
+  cleanliness   Int    @default(5)
+  accuracy      Int    @default(5)
+  communication Int    @default(5)
+  location      Int    @default(5)
+  checkIn       Int    @default(5)
+  value         Int    @default(5)
+
   comment   String
-  response  String?  // Host reply
+  response  String? // Host reply
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  roomId    String
-  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  roomId String
+  room   Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
 }
 
 model Wishlist {
@@ -175,8 +193,8 @@ model Wishlist {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  rooms     Room[]
+  rooms Room[]
 }

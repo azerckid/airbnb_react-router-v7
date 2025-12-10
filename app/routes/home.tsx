@@ -94,23 +94,35 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                 ? !isLiked // Flip state if this specific room is being toggled
                 : isLiked;
 
-              return (
-                <VStack key={room.id} gap={3} align="flex-start" position="relative" className="group">
-                  <Box borderRadius="xl" overflow="hidden" aspectRatio="20/19" position="relative" w="full" bg="gray.100">
-                    <Link to={`/rooms/${room.id}`} style={{ display: 'block', width: '100%', height: '100%' }}>
-                      <Image
-                        src={room.photo || "https://placehold.co/600x400"}
-                        alt={room.title}
-                        objectFit="cover"
-                        w="full"
-                        h="full"
-                        transition="transform 0.3s ease-out"
-                        _groupHover={{ transform: "scale(1.05)" }}
-                      />
-                    </Link>
+              return <Link key={room.id} to={`/rooms/${room.id}`} style={{ display: 'contents' }}>
+                <Box
+                  position="relative"
+                  className="group"
+                  borderRadius="2xl"
+                  overflow="hidden"
+                  bg="whiteAlpha.400"
+                  backdropFilter="blur(10px)"
+                  border="1px solid"
+                  borderColor="whiteAlpha.500"
+                  boxShadow="lg"
+                  transition="transform 0.2s"
+                  _hover={{ transform: "translateY(-4px)", boxShadow: "xl" }}
+                  p={4}
+                >
+                  {/* Image Section */}
+                  <Box borderRadius="xl" overflow="hidden" aspectRatio="20/19" position="relative" w="full" bg="gray.100" mb={3}>
+                    <Image
+                      src={room.photo || "https://placehold.co/600x400"}
+                      alt={room.title}
+                      objectFit="cover"
+                      w="full"
+                      h="full"
+                      transition="transform 0.3s ease-out"
+                      _groupHover={{ transform: "scale(1.05)" }}
+                    />
 
                     <Box position="absolute" top={3} right={3} zIndex={1}>
-                      <fetcher.Form method="post" action="/api/wishlist">
+                      <fetcher.Form method="post" action="/api/wishlist" onClick={(e) => e.stopPropagation()}>
                         <input type="hidden" name="roomId" value={room.id} />
                         <input type="hidden" name="intent" value="toggle" />
                         <IconButton
@@ -118,58 +130,58 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                           variant="ghost"
                           size="sm"
                           color={optimisticLiked ? "red.500" : "white"}
-                          _hover={{ transform: "scale(1.1)", bg: "transparent" }}
+                          bg={optimisticLiked ? "whiteAlpha.800" : "blackAlpha.300"}
+                          _hover={{ transform: "scale(1.1)", bg: "whiteAlpha.900" }}
                           type="submit"
+                          rounded="full"
                           onClick={(e) => {
                             if (!isLoggedIn) {
                               e.preventDefault();
                               alert("Please log in to save to wishlist!");
-                              // Ideally redirect or open modal
                             }
                             e.stopPropagation();
                           }}
                         >
-                          {optimisticLiked ? <FaHeart size={24} /> : <FaRegHeart size={24} />}
+                          {optimisticLiked ? <FaHeart size={16} /> : <FaRegHeart size={16} />}
                         </IconButton>
                       </fetcher.Form>
                     </Box>
 
                     {room.price > 150 && (
-                      <Box position="absolute" top={3} left={3} bg="white" px={2} py={1} borderRadius="md" boxShadow="sm">
+                      <Box position="absolute" top={3} left={3} bg="whiteAlpha.900" px={2} py={1} borderRadius="md" boxShadow="sm">
                         <Text fontSize="xs" fontWeight="bold">Guest favorite</Text>
                       </Box>
                     )}
                   </Box>
 
-                  <Link to={`/rooms/${room.id}`} style={{ width: '100%' }}>
-                    <VStack gap={0} align="flex-start" w="full">
-                      <HStack justify="space-between" w="full" align="flex-start">
-                        <Text fontWeight="bold" truncate maxW="70%" fontSize="md">
-                          {room.city}, {room.country}
+                  {/* Details Section */}
+                  <VStack gap={1} align="flex-start" w="full">
+                    <HStack justify="space-between" w="full" align="flex-start">
+                      <Text fontWeight="bold" truncate maxW="70%" fontSize="md" color="gray.800">
+                        {room.city}, {room.country}
+                      </Text>
+                      <HStack gap={1} fontSize="sm" alignItems="center" color="gray.800">
+                        <FaStar size={12} />
+                        <Text>
+                          {room.reviews.length > 0
+                            ? (room.reviews.reduce((acc: number, r: any) => acc + r.rating, 0) / room.reviews.length).toFixed(1)
+                            : "New"}
                         </Text>
-                        <HStack gap={1} fontSize="sm" alignItems="center">
-                          <FaStar size={12} />
-                          <Text>
-                            {room.reviews.length > 0
-                              ? (room.reviews.reduce((acc: number, r: any) => acc + r.rating, 0) / room.reviews.length).toFixed(1)
-                              : "New"}
-                          </Text>
-                        </HStack>
                       </HStack>
-                      <Text color="fg.muted" fontSize="sm">
-                        {room.category?.name || "Uncategorized"} view
-                      </Text>
-                      <Text color="fg.muted" fontSize="sm">
-                        Oct 12 - 17
-                      </Text>
-                      <HStack gap={1} mt={1} alignItems="baseline">
-                        <Text fontWeight="bold" fontSize="md">${room.price}</Text>
-                        <Text color="fg.muted" fontSize="sm">night</Text>
-                      </HStack>
-                    </VStack>
-                  </Link>
-                </VStack>
-              )
+                    </HStack>
+                    <Text color="gray.600" fontSize="sm">
+                      {room.category?.name || "Uncategorized"} view
+                    </Text>
+                    <Text color="gray.600" fontSize="sm">
+                      Oct 12 - 17
+                    </Text>
+                    <HStack gap={1} mt={1} alignItems="baseline" color="gray.900">
+                      <Text fontWeight="bold" fontSize="lg">${room.price}</Text>
+                      <Text color="gray.600" fontSize="sm">night</Text>
+                    </HStack>
+                  </VStack>
+                </Box>
+              </Link>
             })}
 
           </Grid>

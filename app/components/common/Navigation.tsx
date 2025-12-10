@@ -19,7 +19,17 @@ export function Navigation({
 }: NavigationProps) {
     const navigate = useNavigate();
     return (
-        <Box as="header" borderBottomWidth="1px" bg="bg">
+        <Box
+            as="header"
+            borderBottomWidth="1px"
+            borderColor="whiteAlpha.400"
+            bg="whiteAlpha.200"
+            backdropFilter="blur(10px)"
+            position="sticky"
+            top={0}
+            zIndex={1000}
+            shadow="sm"
+        >
             <Container maxW="7xl" py={4}>
                 <HStack
                     justify="space-between"
