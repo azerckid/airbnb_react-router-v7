@@ -17,7 +17,7 @@ import {
 import { Form, useLoaderData, useNavigation, useSubmit } from "react-router";
 import { prisma } from "~/db.server";
 import { requireUser } from "~/services/auth.server";
-import type { Route } from "./+types/host.rooms";
+import type { Route } from "./+types/rooms";
 import { Link } from "react-router";
 import { FaPlus } from "react-icons/fa";
 

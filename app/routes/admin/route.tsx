@@ -2,7 +2,7 @@ import { Outlet, Link, useLocation } from "react-router";
 import { Box, Flex, VStack, Text, Button, HStack, Separator } from "@chakra-ui/react";
 import { FaHome, FaUsers, FaBed, FaCalendarAlt, FaChartLine, FaSignOutAlt, FaUmbrellaBeach, FaList } from "react-icons/fa";
 import { requireUser } from "~/services/auth.server";
-import type { Route } from "./+types/admin";
+import type { Route } from "./+types/route";
 import { redirect } from "react-router";
 
 export async function loader({ request }: Route.LoaderArgs) {

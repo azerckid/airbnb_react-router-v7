@@ -1,4 +1,4 @@
-import type { Route } from "./+types/experiences._index";
+import type { Route } from "./+types/_index";
 import { Link } from "react-router";
 import {
     Box,

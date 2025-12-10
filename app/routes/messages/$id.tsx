@@ -1,4 +1,4 @@
-import type { Route } from "./+types/messages.$id";
+import type { Route } from "./+types/$id";
 import {
     Box,
     VStack,

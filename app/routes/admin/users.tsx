@@ -12,7 +12,7 @@ import {
 } from "@chakra-ui/react";
 import { prisma } from "~/db.server";
 import { requireUser } from "~/services/auth.server";
-import type { Route } from "./+types/admin.users";
+import type { Route } from "./+types/users";
 import { Form, redirect, useNavigation } from "react-router";
 import { FaTrash, FaEdit } from "react-icons/fa";
 import { TableSkeleton } from "~/components/common/TableSkeleton";

@@ -1,4 +1,4 @@
-import type { Route } from "./+types/host.experiences.new";
+import type { Route } from "./+types/experiences.new";
 import {
     Box,
     Container,

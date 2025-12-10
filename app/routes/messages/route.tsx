@@ -1,4 +1,4 @@
-import type { Route } from "./+types/messages";
+import type { Route } from "./+types/route";
 import { Link, Outlet, useLocation } from "react-router";
 import { Box, Container, Heading, VStack, HStack, Text, Avatar, Separator } from "@chakra-ui/react";
 import { prisma } from "~/db.server";

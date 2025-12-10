@@ -11,7 +11,7 @@ import {
 } from "@chakra-ui/react";
 import { prisma } from "~/db.server";
 import { requireUser } from "~/services/auth.server";
-import type { Route } from "./+types/admin.rooms";
+import type { Route } from "./+types/rooms";
 import { Form, redirect } from "react-router";
 import { FaTrash } from "react-icons/fa";
 

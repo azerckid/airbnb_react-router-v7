@@ -9,12 +9,9 @@ import {
     Input,
     Textarea,
     VStack,
-    useDisclosure,
-    Dialog,
-    Icon,
 } from "@chakra-ui/react";
 import { Form, useNavigation, redirect } from "react-router";
-import type { Route } from "./+types/admin.amenities";
+import type { Route } from "./+types/categories";
 import { prisma } from "~/db.server";
 import { requireUser } from "~/services/auth.server";
 import { FaTrash, FaEdit, FaPlus } from "react-icons/fa";
@@ -23,20 +20,18 @@ import { toaster } from "~/components/ui/toaster";
 import { useEffect, useState } from "react";
 import {
     DialogBody,
-    DialogCloseTrigger,
     DialogContent,
     DialogFooter,
     DialogHeader,
     DialogRoot,
     DialogTitle,
-    DialogTrigger,
 } from "~/components/ui/dialog"
 
 export async function loader({ request }: Route.LoaderArgs) {
     const user = await requireUser(request);
     if (!user.isAdmin) throw redirect("/");
 
-    const amenities = await prisma.amenity.findMany({
+    const categories = await prisma.category.findMany({
         orderBy: { createdAt: "desc" },
         include: {
             _count: {
@@ -45,7 +40,7 @@ export async function loader({ request }: Route.LoaderArgs) {
         }
     });
 
-    return { amenities };
+    return { categories };
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -58,50 +53,51 @@ export async function action({ request }: Route.ActionArgs) {
     if (intent === "create") {
         const name = formData.get("name") as string;
         const description = formData.get("description") as string;
+        const icon = formData.get("icon") as string;
 
         if (!name) return { error: "Name is required" };
 
         try {
-            await prisma.amenity.create({
-                data: { name, description },
+            await prisma.category.create({
+                data: { name, description, icon },
             });
-            return { success: "Amenity created successfully" };
+            return { success: "Category created successfully" };
         } catch (e) {
-            return { error: "Amenity with this name likely already exists" };
+            return { error: "Category likely already exists" };
         }
     }
 
     if (intent === "delete") {
         const id = formData.get("id") as string;
-        await prisma.amenity.delete({ where: { id } });
-        return { success: "Amenity deleted" };
+        await prisma.category.delete({ where: { id } });
+        return { success: "Category deleted" };
     }
 
     if (intent === "edit") {
         const id = formData.get("id") as string;
         const name = formData.get("name") as string;
         const description = formData.get("description") as string;
+        const icon = formData.get("icon") as string;
 
         if (!name) return { error: "Name is required" };
 
-        await prisma.amenity.update({
+        await prisma.category.update({
             where: { id },
-            data: { name, description }
+            data: { name, description, icon }
         });
-        return { success: "Amenity updated" };
+        return { success: "Category updated" };
     }
 
     return null;
 }
 
-export default function AdminAmenities({ loaderData, actionData }: Route.ComponentProps) {
-    const { amenities } = loaderData;
+export default function AdminCategories({ loaderData, actionData }: Route.ComponentProps) {
+    const { categories } = loaderData;
     const navigation = useNavigation();
-    const isLoading = navigation.state === "loading" && navigation.location.pathname === "/admin/amenities";
+    const isLoading = navigation.state === "loading" && navigation.location.pathname === "/admin/categories";
 
-    // Dialog State for Edit/Create
     const [isOpen, setIsOpen] = useState(false);
-    const [editingAmenity, setEditingAmenity] = useState<any>(null);
+    const [editingCategory, setEditingCategory] = useState<any>(null);
 
     useEffect(() => {
         if (actionData?.success) {
@@ -111,7 +107,7 @@ export default function AdminAmenities({ loaderData, actionData }: Route.Compone
                 type: "success",
             });
             setIsOpen(false);
-            setEditingAmenity(null);
+            setEditingCategory(null);
         } else if (actionData?.error) {
             toaster.create({
                 title: "Error",
@@ -121,13 +117,13 @@ export default function AdminAmenities({ loaderData, actionData }: Route.Compone
         }
     }, [actionData]);
 
-    const handleEdit = (amenity: any) => {
-        setEditingAmenity(amenity);
+    const handleEdit = (cat: any) => {
+        setEditingCategory(cat);
         setIsOpen(true);
     }
 
     const handleCreate = () => {
-        setEditingAmenity(null);
+        setEditingCategory(null);
         setIsOpen(true);
     }
 
@@ -135,10 +131,10 @@ export default function AdminAmenities({ loaderData, actionData }: Route.Compone
         return (
             <Box>
                 <HStack justify="space-between" mb={6}>
-                    <Heading size="lg">Amenity Management</Heading>
-                    <Button colorPalette="blue" disabled>Add Amenity</Button>
+                    <Heading size="lg">Category Management</Heading>
+                    <Button colorPalette="blue" disabled>Add Category</Button>
                 </HStack>
-                <TableSkeleton headers={["Name", "Description", "Used By", "Actions"]} />
+                <TableSkeleton headers={["Name", "Description", "Icon", "Rooms", "Actions"]} />
             </Box>
         )
     }
@@ -146,9 +142,9 @@ export default function AdminAmenities({ loaderData, actionData }: Route.Compone
     return (
         <Box>
             <HStack justify="space-between" mb={6}>
-                <Heading size="lg">Amenity Management</Heading>
+                <Heading size="lg">Category Management</Heading>
                 <Button colorPalette="blue" onClick={handleCreate}>
-                    <FaPlus /> Add Amenity
+                    <FaPlus /> Add Category
                 </Button>
             </HStack>
 
@@ -158,31 +154,33 @@ export default function AdminAmenities({ loaderData, actionData }: Route.Compone
                         <Table.Row bg="gray.50">
                             <Table.ColumnHeader>Name</Table.ColumnHeader>
                             <Table.ColumnHeader>Description</Table.ColumnHeader>
-                            <Table.ColumnHeader>Used By</Table.ColumnHeader>
+                            <Table.ColumnHeader>Icon</Table.ColumnHeader>
+                            <Table.ColumnHeader>Rooms</Table.ColumnHeader>
                             <Table.ColumnHeader textAlign="end">Actions</Table.ColumnHeader>
                         </Table.Row>
                     </Table.Header>
                     <Table.Body>
-                        {amenities.map((amenity) => (
-                            <Table.Row key={amenity.id}>
-                                <Table.Cell fontWeight="medium">{amenity.name}</Table.Cell>
-                                <Table.Cell color="gray.500" truncate maxW="300px">{amenity.description}</Table.Cell>
-                                <Table.Cell>{amenity._count.rooms} rooms</Table.Cell>
+                        {categories.map((cat) => (
+                            <Table.Row key={cat.id}>
+                                <Table.Cell fontWeight="medium">{cat.name}</Table.Cell>
+                                <Table.Cell color="gray.500" truncate maxW="200px">{cat.description}</Table.Cell>
+                                <Table.Cell>{cat.icon}</Table.Cell>
+                                <Table.Cell>{cat._count.rooms}</Table.Cell>
                                 <Table.Cell textAlign="end">
                                     <HStack justify="flex-end" gap={2}>
                                         <IconButton
                                             aria-label="Edit"
                                             size="sm"
                                             variant="ghost"
-                                            onClick={() => handleEdit(amenity)}
+                                            onClick={() => handleEdit(cat)}
                                         >
                                             <FaEdit />
                                         </IconButton>
                                         <Form method="post" onSubmit={(e) => {
-                                            if (!confirm("Delete this amenity?")) e.preventDefault();
+                                            if (!confirm("Delete this category?")) e.preventDefault();
                                         }}>
                                             <input type="hidden" name="intent" value="delete" />
-                                            <input type="hidden" name="id" value={amenity.id} />
+                                            <input type="hidden" name="id" value={cat.id} />
                                             <IconButton
                                                 type="submit"
                                                 aria-label="Delete"
@@ -197,10 +195,10 @@ export default function AdminAmenities({ loaderData, actionData }: Route.Compone
                                 </Table.Cell>
                             </Table.Row>
                         ))}
-                        {amenities.length === 0 && (
+                        {categories.length === 0 && (
                             <Table.Row>
-                                <Table.Cell colSpan={4} textAlign="center" py={10}>
-                                    <Text color="gray.500">No amenities found. Create one!</Text>
+                                <Table.Cell colSpan={5} textAlign="center" py={10}>
+                                    <Text color="gray.500">No categories found.</Text>
                                 </Table.Cell>
                             </Table.Row>
                         )}
@@ -212,29 +210,33 @@ export default function AdminAmenities({ loaderData, actionData }: Route.Compone
             <DialogRoot open={isOpen} onOpenChange={(e) => setIsOpen(e.open)}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>{editingAmenity ? "Edit Amenity" : "New Amenity"}</DialogTitle>
+                        <DialogTitle>{editingCategory ? "Edit Category" : "New Category"}</DialogTitle>
                     </DialogHeader>
                     <DialogBody>
-                        <Form id="amenity-form" method="post">
-                            <input type="hidden" name="intent" value={editingAmenity ? "edit" : "create"} />
-                            {editingAmenity && <input type="hidden" name="id" value={editingAmenity.id} />}
+                        <Form id="category-form" method="post">
+                            <input type="hidden" name="intent" value={editingCategory ? "edit" : "create"} />
+                            {editingCategory && <input type="hidden" name="id" value={editingCategory.id} />}
 
                             <VStack gap={4} align="stretch">
                                 <Box>
                                     <Text fontSize="sm" fontWeight="bold" mb={1}>Name</Text>
-                                    <Input name="name" defaultValue={editingAmenity?.name} placeholder="e.g. Wifi, Pool" required />
+                                    <Input name="name" defaultValue={editingCategory?.name} placeholder="e.g. Tiny Homes" required />
+                                </Box>
+                                <Box>
+                                    <Text fontSize="sm" fontWeight="bold" mb={1}>Icon Name</Text>
+                                    <Input name="icon" defaultValue={editingCategory?.icon} placeholder="e.g. FaHome (React Icons name)" />
                                 </Box>
                                 <Box>
                                     <Text fontSize="sm" fontWeight="bold" mb={1}>Description</Text>
-                                    <Textarea name="description" defaultValue={editingAmenity?.description} placeholder="Description (optional)" />
+                                    <Textarea name="description" defaultValue={editingCategory?.description} placeholder="Description" />
                                 </Box>
                             </VStack>
                         </Form>
                     </DialogBody>
                     <DialogFooter>
                         <Button variant="ghost" onClick={() => setIsOpen(false)}>Cancel</Button>
-                        <Button form="amenity-form" type="submit" colorPalette="blue" loading={navigation.state === "submitting"}>
-                            {editingAmenity ? "Update" : "Create"}
+                        <Button form="category-form" type="submit" colorPalette="blue" loading={navigation.state === "submitting"}>
+                            {editingCategory ? "Update" : "Create"}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

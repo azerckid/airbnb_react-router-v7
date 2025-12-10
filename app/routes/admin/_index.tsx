@@ -1,7 +1,7 @@
 import { Heading, Grid, Box, Text, VStack, HStack, SimpleGrid } from "@chakra-ui/react";
 import { prisma } from "~/db.server";
 import { requireUser } from "~/services/auth.server";
-import type { Route } from "./+types/admin._index";
+import type { Route } from "./+types/_index";
 import { FaUser, FaBed, FaCalendarCheck, FaDollarSign } from "react-icons/fa";
 
 export async function loader({ request }: Route.LoaderArgs) {

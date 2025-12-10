@@ -13,7 +13,7 @@ import {
 import { Form, useLoaderData, useNavigation, useSubmit } from "react-router";
 import { prisma } from "~/db.server";
 import { requireUser } from "~/services/auth.server";
-import type { Route } from "./+types/host.bookings";
+import type { Route } from "./+types/bookings";
 import { format } from "date-fns";
 import { Link } from "react-router";
 

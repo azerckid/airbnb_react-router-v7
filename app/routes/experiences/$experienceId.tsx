@@ -1,4 +1,4 @@
-import type { Route } from "./+types/experiences.$experienceId";
+import type { Route } from "./+types/$experienceId";
 import {
     Box,
     Container,

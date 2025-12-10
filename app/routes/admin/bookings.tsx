@@ -10,7 +10,7 @@ import {
 } from "@chakra-ui/react";
 import { prisma } from "~/db.server";
 import { requireUser } from "~/services/auth.server";
-import type { Route } from "./+types/admin.bookings";
+import type { Route } from "./+types/bookings";
 import { Form, redirect } from "react-router";
 import { FaTrash, FaCheck } from "react-icons/fa";
 

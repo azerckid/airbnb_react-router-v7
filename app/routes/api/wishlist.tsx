@@ -1,4 +1,4 @@
-import type { Route } from "./+types/api.wishlist";
+import type { Route } from "./+types/wishlist";
 import { data } from "react-router";
 import { prisma } from "~/db.server";
 import { requireUser } from "~/services/auth.server";

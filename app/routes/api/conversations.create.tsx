@@ -1,4 +1,4 @@
-import type { Route } from "./+types/api.conversations.create";
+import type { Route } from "./+types/conversations.create";
 import { redirect } from "react-router";
 import { prisma } from "~/db.server";
 import { requireUser } from "~/services/auth.server";

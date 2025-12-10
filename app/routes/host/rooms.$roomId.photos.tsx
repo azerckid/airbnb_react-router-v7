@@ -1,4 +1,4 @@
-import type { Route } from "./+types/host.rooms.$roomId.photos";
+import type { Route } from "./+types/rooms.$roomId.photos";
 import {
     Box,
     Button,
