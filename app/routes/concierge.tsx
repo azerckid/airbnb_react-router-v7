@@ -1,4 +1,3 @@
-
 import { useState, useRef, useEffect } from "react";
 import {
     Box,
@@ -19,6 +18,11 @@ import { FaPaperPlane, FaRobot, FaUser, FaPlus, FaHistory, FaBars } from "react-
 import { motion, AnimatePresence } from "framer-motion";
 import type { MetaArgs } from "react-router";
 import { useLoaderData, Link } from "react-router";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+
+import { type LoaderFunctionArgs } from "react-router";
+import { getUser } from "~/services/auth.server";
 
 export function meta({ }: MetaArgs) {
     return [
@@ -38,9 +42,6 @@ interface ConversationItem {
     title: string | null;
     updatedAt: string;
 }
-
-import { type LoaderFunctionArgs } from "react-router";
-import { getUser } from "~/services/auth.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
     const user = await getUser(request);
@@ -88,7 +89,9 @@ export default function Concierge() {
     }, [messages]);
 
     const scrollToBottom = () => {
-        scrollRef.current?.scrollIntoView({ behavior: "smooth" });
+        if (scrollRef.current) {
+            scrollRef.current.scrollIntoView({ behavior: "smooth" });
+        }
     };
 
     const handleNewChat = () => {
@@ -190,7 +193,10 @@ export default function Concierge() {
                     }
                     return newMsgs;
                 });
-                scrollRef.current?.scrollIntoView({ behavior: "smooth" });
+                // Check if scrollRef is valid before scrolling
+                if (scrollRef.current) {
+                    scrollRef.current.scrollIntoView({ behavior: "smooth" });
+                }
             }
         } catch (error) {
             console.error("Chat error:", error);
@@ -366,14 +372,55 @@ export default function Concierge() {
                                     borderColor="whiteAlpha.500"
                                     color="gray.800"
                                     shadow="sm"
+                                    overflow="hidden"
                                 >
-                                    {msg.text ? <Text whiteSpace="pre-wrap" lineHeight="1.6">{msg.text}</Text> : <Spinner size="sm" color="gray.500" />}
+                                    {msg.text ? (
+                                        <Box
+                                            className="markdown-body"
+                                            fontSize="md"
+                                            lineHeight="1.6"
+                                            css={{
+                                                "& p": { marginBottom: "0.5rem" },
+                                                "& ul": { paddingLeft: "1.2rem", marginBottom: "0.5rem" },
+                                                "& ol": { paddingLeft: "1.2rem", marginBottom: "0.5rem" },
+                                                "& li": { marginBottom: "0.2rem" },
+                                                "& strong": { fontWeight: "bold" },
+                                                "& em": { fontStyle: "italic" },
+                                            }}
+                                        >
+                                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                                {msg.text}
+                                            </ReactMarkdown>
+                                        </Box>
+                                    ) : (
+                                        <Spinner size="sm" color="gray.500" />
+                                    )}
                                     {msg.logs && msg.logs.length > 0 && (
-                                        <VStack align="start" gap={1} mt={3} p={3} bg="gray.100" rounded="md">
-                                            {msg.logs.map((log, i) => (
-                                                <Text key={i} fontSize="xs" color="gray.500" fontFamily="mono">{log}</Text>
-                                            ))}
-                                        </VStack>
+                                        <Box mt={3}>
+                                            <Box as="details" bg="gray.50" rounded="md" overflow="hidden" border="1px solid" borderColor="gray.100">
+                                                <Box
+                                                    as="summary"
+                                                    p={2}
+                                                    cursor="pointer"
+                                                    fontSize="xs"
+                                                    color="gray.500"
+                                                    fontWeight="medium"
+                                                    _hover={{ bg: "gray.100" }}
+                                                    style={{ listStyle: "none" }}
+                                                >
+                                                    <Flex align="center" gap={2}>
+                                                        <Text>🔍 Debug Logs ({msg.logs.length})</Text>
+                                                    </Flex>
+                                                </Box>
+                                                <VStack align="start" gap={1} p={3} pt={2} bg="gray.900" color="green.300" maxH="200px" overflowY="auto">
+                                                    {msg.logs.map((log, i) => (
+                                                        <Text key={i} fontSize="xs" fontFamily="mono" wordBreak="break-word">
+                                                            {log}
+                                                        </Text>
+                                                    ))}
+                                                </VStack>
+                                            </Box>
+                                        </Box>
                                     )}
                                 </Box>
                             </HStack>
@@ -438,4 +485,3 @@ export default function Concierge() {
         </Flex>
     );
 }
-
