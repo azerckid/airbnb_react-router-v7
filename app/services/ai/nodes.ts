@@ -7,6 +7,8 @@ import { searchRooms } from "./core.server";
 import { searchFlights, type FlightOffer, filterFlightsWithinHours } from "./tools/flight.server";
 import { searchStructuredRooms, type RoomListing, getAvailableLocations } from "./tools/recommendation.server";
 import { getIpLocation, findNearestAirport, findNearestAirports, getAirportLocation, getAirportLocationByCountry } from "./tools/location.server";
+import { getAllKoreanAirports } from "./tools/korean-airports";
+import { getAllDestinationCities } from "./tools/destination-mapping";
 
 // 1. Define State
 export interface AgentState {
@@ -94,60 +96,83 @@ export async function autoRecommendationNode(state: AgentState) {
         temperature: 0
     });
 
-    // 2. Detect Location and Find Multiple Airports
-    let originCode = "ICN";
-    let originCity = "Seoul";
-    let airports: Array<{ iataCode: string; name: string; distance: number }> = [];
+    // ============================================
+    // Phase 2: 검색 조합 생성
+    // ============================================
+    logs.push("=".repeat(60));
+    logs.push("Phase 2: 검색 조합 생성 시작");
+    logs.push("=".repeat(60));
 
-    if (state.ip) {
-        logs.push(`📍 Detecting location... (IP: ${state.ip})`);
-        const loc = await getIpLocation(state.ip);
-        if (loc) {
-            originCity = loc.city || "Unknown";
-            // Find multiple nearby airports (within 200km, up to 5 airports)
-            const nearbyAirports = await findNearestAirports(loc.lat, loc.lon, 200, 5);
-            if (nearbyAirports.length > 0) {
-                airports = nearbyAirports;
-                originCode = nearbyAirports[0].iataCode; // Use nearest as default
-                logs.push(`✈️ Found ${nearbyAirports.length} nearby airports:`);
-                nearbyAirports.forEach((airport, idx) => {
-                    logs.push(`   ${idx + 1}. ${airport.name} (${airport.iataCode}) - ${Math.round(airport.distance)}km`);
-                });
-            } else {
-                // Fallback to single airport search
-                const airport = await findNearestAirport(loc.lat, loc.lon);
-                if (airport) {
-                    originCode = airport.iataCode;
-                    airports = [airport];
-                    logs.push(`✈️ Nearest Airport: ${airport.name} (${originCode}) - ${Math.round(airport.distance)}km`);
-                }
-            }
+    // 2.1. 한국 국제공항 14개 목록 가져오기
+    logs.push("📋 Step 1: 한국 국제공항 목록 가져오기");
+    const koreanAirports = getAllKoreanAirports();
+    logs.push(`   ✓ 총 ${koreanAirports.length}개 국제공항 로드 완료`);
+    koreanAirports.forEach((airport, idx) => {
+        logs.push(`   ${idx + 1}. ${airport.iataCode} - ${airport.nameKorean} (${airport.city})`);
+    });
+
+    // 2.2. 목적지 도시 8개 목록 가져오기 (DB에 숙소 데이터가 있는 도시)
+    logs.push("\n📋 Step 2: 목적지 도시 목록 가져오기 (DB에 숙소 데이터가 있는 도시)");
+    const destinationCities = getAllDestinationCities();
+    logs.push(`   ✓ 총 ${destinationCities.length}개 목적지 도시 로드 완료`);
+    destinationCities.forEach((dest, idx) => {
+        logs.push(`   ${idx + 1}. ${dest.city}, ${dest.country} (${dest.airportCode})`);
+    });
+
+    // 2.3. 검색 조합 생성 (14개 출발지 × 8개 목적지 = 112개 조합)
+    logs.push("\n📋 Step 3: 검색 조합 생성");
+    const searchCombinations: Array<{
+        origin: string;
+        originName: string;
+        destination: string;
+        destinationCity: string;
+        destinationCountry: string;
+    }> = [];
+
+    for (const origin of koreanAirports) {
+        for (const dest of destinationCities) {
+            searchCombinations.push({
+                origin: origin.iataCode,
+                originName: origin.nameKorean,
+                destination: dest.airportCode,
+                destinationCity: dest.city,
+                destinationCountry: dest.country
+            });
         }
     }
 
-    // If no airports found, use all major Korean airports
-    if (airports.length === 0) {
-        airports = [
-            { iataCode: "ICN", name: "Incheon International Airport", distance: 0 },
-            { iataCode: "GMP", name: "Gimpo International Airport", distance: 0 },
-            { iataCode: "PUS", name: "Gimhae International Airport", distance: 0 }
-        ];
-        logs.push(`✈️ Using default major Korean airports: ICN, GMP, PUS`);
-    } else {
-        // Add major airports if not already included
-        const airportCodes = new Set(airports.map(a => a.iataCode));
-        if (!airportCodes.has("ICN")) {
-            airports.push({ iataCode: "ICN", name: "Incheon International Airport", distance: 0 });
-        }
-        if (!airportCodes.has("GMP")) {
-            airports.push({ iataCode: "GMP", name: "Gimpo International Airport", distance: 0 });
-        }
-        if (!airportCodes.has("PUS")) {
-            airports.push({ iataCode: "PUS", name: "Gimhae International Airport", distance: 0 });
-        }
-        logs.push(`✈️ Total airports to search: ${airports.map(a => a.iataCode).join(', ')}`);
-    }
+    logs.push(`   ✓ 총 ${searchCombinations.length}개 검색 조합 생성 완료`);
+    logs.push(`   ✓ 계산: ${koreanAirports.length}개 출발지 × ${destinationCities.length}개 목적지 = ${searchCombinations.length}개 조합`);
+    
+    // 조합 샘플 출력 (처음 5개)
+    logs.push(`\n   조합 샘플 (처음 5개):`);
+    searchCombinations.slice(0, 5).forEach((combo, idx) => {
+        logs.push(`   ${idx + 1}. ${combo.origin} → ${combo.destination} (${combo.destinationCity}, ${combo.destinationCountry})`);
+    });
+    
+    logs.push("=".repeat(60));
+    logs.push("Phase 2: 검색 조합 생성 완료");
+    logs.push("=".repeat(60));
+    logs.push(`\n✅ Phase 2 완료: ${searchCombinations.length}개 검색 조합 준비 완료\n`);
 
+    // ============================================
+    // Phase 2 완료 - 다음 Phase는 Phase 3에서 구현 예정
+    // ============================================
+    // TODO: Phase 3에서 searchCombinations를 사용하여 항공편 검색 진행
+    
+    // Phase 2 검증용 임시 반환 (실제 구현 시 제거)
+    return {
+        answer: `Phase 2 완료: ${searchCombinations.length}개 검색 조합이 생성되었습니다.\n\n출발지: ${koreanAirports.length}개 (${koreanAirports.map(a => a.iataCode).join(', ')})\n목적지: ${destinationCities.length}개 (${destinationCities.map(d => `${d.city}(${d.airportCode})`).join(', ')})\n\n검색 조합 샘플:\n${searchCombinations.slice(0, 10).map((c, i) => `${i + 1}. ${c.origin} → ${c.destination} (${c.destinationCity})`).join('\n')}\n\n... 총 ${searchCombinations.length}개 조합`,
+        foundFlights: [],
+        foundRooms: [],
+        logs
+    };
+
+    /* ============================================
+     * Phase 3부터는 아래 코드를 사용할 예정
+     * 현재는 Phase 2만 구현 완료 상태
+     * ============================================
+     * 
     // 2.5. Get available destinations (locations with accommodation data)
     logs.push("🏨 Finding destinations with accommodation data...");
     const availableLocations = await getAvailableLocations();
@@ -703,6 +728,7 @@ export async function autoRecommendationNode(state: AgentState) {
         foundRooms: rooms,
         logs
     };
+    */
 }
 
 
