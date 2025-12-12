@@ -6,6 +6,7 @@
 export interface DestinationMapping {
     country: string;
     city: string;
+    cityKorean?: string; // Add Korean name field
     airportCode: string;
     airportName: string;
     alternativeAirports?: Array<{ code: string; name: string }>;
@@ -22,12 +23,14 @@ export const DESTINATION_MAPPINGS: DestinationMapping[] = [
     {
         country: "Japan",
         city: "Fukuoka-City",
+        cityKorean: "후쿠오카",
         airportCode: "FUK",
         airportName: "Fukuoka Airport",
     },
     {
         country: "Japan",
         city: "Hiroshima",
+        cityKorean: "히로시마",
         airportCode: "HIJ",
         airportName: "Hiroshima Airport",
         alternativeAirports: [
@@ -37,6 +40,7 @@ export const DESTINATION_MAPPINGS: DestinationMapping[] = [
     {
         country: "Japan",
         city: "Kyoto",
+        cityKorean: "교토",
         airportCode: "KIX",
         airportName: "Kansai International Airport",
         alternativeAirports: [
@@ -46,6 +50,7 @@ export const DESTINATION_MAPPINGS: DestinationMapping[] = [
     {
         country: "Japan",
         city: "Osaka",
+        cityKorean: "오사카",
         airportCode: "KIX",
         airportName: "Kansai International Airport",
         alternativeAirports: [
@@ -55,17 +60,19 @@ export const DESTINATION_MAPPINGS: DestinationMapping[] = [
     {
         country: "Japan",
         city: "Tokyo",
+        cityKorean: "도쿄",
         airportCode: "NRT",
         airportName: "Narita International Airport",
         alternativeAirports: [
             { code: "HND", name: "Haneda Airport" }
         ]
     },
-    
+
     // United States (New York area)
     {
         country: "United States",
         city: "Brooklyn",
+        cityKorean: "브루클린",
         airportCode: "JFK",
         airportName: "John F. Kennedy International Airport",
         alternativeAirports: [
@@ -76,6 +83,7 @@ export const DESTINATION_MAPPINGS: DestinationMapping[] = [
     {
         country: "United States",
         city: "Manhattan",
+        cityKorean: "맨해튼",
         airportCode: "JFK",
         airportName: "John F. Kennedy International Airport",
         alternativeAirports: [
@@ -86,6 +94,7 @@ export const DESTINATION_MAPPINGS: DestinationMapping[] = [
     {
         country: "United States",
         city: "Queens",
+        cityKorean: "퀸즈",
         airportCode: "JFK",
         airportName: "John F. Kennedy International Airport",
         alternativeAirports: [
@@ -143,10 +152,12 @@ export function getDestinationByAirportCode(airportCode: string): DestinationMap
  * Get all cities with accommodation data
  * @returns Array of { country, city, airportCode }
  */
-export function getAllDestinationCities(): Array<{ country: string; city: string; airportCode: string }> {
+// Update return type in function signature (implicit or explicit)
+export function getAllDestinationCities(): Array<{ country: string; city: string; cityKorean?: string; airportCode: string }> {
     return DESTINATION_MAPPINGS.map(d => ({
         country: d.country,
         city: d.city,
+        cityKorean: d.cityKorean,
         airportCode: d.airportCode
     }));
 }

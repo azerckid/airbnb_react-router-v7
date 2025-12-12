@@ -261,7 +261,7 @@ export default function Concierge() {
                         // More conservative: only fix if there's a single space between two Korean characters that form a common word
                         // Fix numbers with spaces: "1, 000, 000" -> "1,000,000", "286, 056" -> "286,056"
                         safeText = safeText.replace(/(\d)\s*,\s*(\d)/g, '$1,$2');
-                        
+
                         // Only fix very specific patterns that are clearly wrong
                         // Don't remove all spaces between Korean characters - be more selective
                         // Fix only obvious compound word splits: "고객 님", "항 공편", "숙 소", "비 용"
@@ -281,7 +281,7 @@ export default function Concierge() {
                             [/(추)\s+(정)/g, '$1$2'],
                             [/(총)\s+(예상)/g, '$1$2'],
                         ];
-                        
+
                         for (const [pattern, replacement] of commonWordFixes) {
                             safeText = safeText.replace(pattern, replacement);
                         }
@@ -289,7 +289,12 @@ export default function Concierge() {
                         lastMsg.text = safeText;
                         lastMsg.isStreaming = true; // 스트리밍 중임을 표시
                         if (newLogs.length > 0) {
-                            lastMsg.logs = [...(lastMsg.logs || []), ...newLogs];
+                            const currentLogs = lastMsg.logs || [];
+                            // Filter out duplicates that are already in the logs
+                            const uniqueNewLogs = newLogs.filter(log => !currentLogs.includes(log));
+                            if (uniqueNewLogs.length > 0) {
+                                lastMsg.logs = [...currentLogs, ...uniqueNewLogs];
+                            }
                         }
                     }
                     return newMsgs;
@@ -308,7 +313,7 @@ export default function Concierge() {
                     if (lastMsg && (lastMsg.role === "assistant" || lastMsg.role === "ai")) {
                         // 스트리밍 완료 표시 및 텍스트 재정리
                         let finalText = lastMsg.text;
-                        
+
                         // 최종 정리: 마크다운 링크 형식 정리 (정확한 패턴 매칭)
                         // Match markdown link pattern: [text](url) and clean both parts
                         finalText = finalText.replace(/\[([^\]]*)\]\s*\(\s*([^)]*)\s*\)/g, (match, linkText, url) => {
@@ -319,7 +324,7 @@ export default function Concierge() {
 
                         // Fix numbers with spaces: "1, 000, 000" -> "1,000,000"
                         finalText = finalText.replace(/(\d)\s*,\s*(\d)/g, '$1,$2');
-                        
+
                         // Only fix very specific compound word patterns
                         const commonWordFixes: [RegExp, string][] = [
                             [/(고객)\s+(님)/g, '$1$2'],
@@ -337,14 +342,14 @@ export default function Concierge() {
                             [/(추)\s+(정)/g, '$1$2'],
                             [/(총)\s+(예상)/g, '$1$2'],
                         ];
-                        
+
                         for (const [pattern, replacement] of commonWordFixes) {
                             finalText = finalText.replace(pattern, replacement);
                         }
-                        
+
                         // 스트리밍 완료 플래그 제거하여 강제 리렌더링
-                        return newMsgs.map((msg, idx) => 
-                            idx === newMsgs.length - 1 
+                        return newMsgs.map((msg, idx) =>
+                            idx === newMsgs.length - 1
                                 ? { ...msg, text: finalText, isStreaming: false }
                                 : msg
                         );
@@ -642,7 +647,7 @@ export default function Concierge() {
                                                     a: ({ node, ...props }) => {
                                                         const isExternal = props.href?.startsWith('http');
                                                         const href = props.href || '';
-                                                        
+
                                                         // External links - open in new tab
                                                         if (isExternal) {
                                                             return (
@@ -701,6 +706,8 @@ export default function Concierge() {
                                         <Box mt={3}>
                                             <Box
                                                 as="details"
+                                                // @ts-ignore
+                                                open={true}
                                                 bg="gray.50"
                                                 rounded="md"
                                                 overflow="hidden"
@@ -718,7 +725,7 @@ export default function Concierge() {
                                                     style={{ listStyle: "none" }}
                                                 >
                                                     <Flex align="center" gap={2}>
-                                                        <Text>🔍 Debug Logs ({msg.logs.length})</Text>
+                                                        <Text>🔍 Progress Logs ({msg.logs.length})</Text>
                                                     </Flex>
                                                 </Box>
                                                 <VStack align="start" gap={1} p={3} pt={2} bg="gray.900" color="green.300" maxH="200px" overflowY="auto">

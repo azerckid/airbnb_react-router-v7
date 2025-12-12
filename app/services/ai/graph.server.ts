@@ -1,5 +1,6 @@
+
 import { StateGraph, END, START } from "@langchain/langgraph";
-import { type AgentState, routerNode, greeterNode, searcherNode, flightNode, emergencyNode, budgetNode, autoRecommendationNode } from "./nodes";
+import { type AgentState, routerNode, greeterNode, searcherNode, flightNode, emergencyNode, budgetNode, initAutoPlanNode, batchAutoPlanNode, finalizeAutoPlanNode } from "./nodes";
 
 // Build Graph
 const workflow = new StateGraph<any>({
@@ -13,6 +14,10 @@ const workflow = new StateGraph<any>({
         params: { reducer: (x: any, y: any) => y ?? x },
         foundFlights: { reducer: (x: any, y: any) => y ?? x },
         foundRooms: { reducer: (x: any, y: any) => y ?? x },
+        // New State Fields
+        combinations: { reducer: (x: any, y: any) => y ?? x },
+        batchIndex: { reducer: (x: any, y: any) => y ?? x },
+        searchResults: { reducer: (x: any, y: any) => y ?? x },
     }
 })
     .addNode("router", routerNode as any)
@@ -21,7 +26,11 @@ const workflow = new StateGraph<any>({
     .addNode("flight", flightNode as any)
     .addNode("emergency", emergencyNode as any)
     .addNode("budget", budgetNode as any)
-    .addNode("autoPlan", autoRecommendationNode as any)
+    // New Nodes
+    .addNode("initAuto", initAutoPlanNode as any)
+    .addNode("batchAuto", batchAutoPlanNode as any)
+    .addNode("finalizeAuto", finalizeAutoPlanNode as any)
+
     .addEdge(START, "router")
     .addConditionalEdges(
         "router",
@@ -29,7 +38,7 @@ const workflow = new StateGraph<any>({
             switch (state.classification) {
                 case "EMERGENCY": return "emergency";
                 case "BUDGET": return "budget";
-                case "AUTO_PLAN": return "autoPlan";
+                case "AUTO_PLAN": return "initAuto"; // Route to Init
                 case "FLIGHT": return "flight";
                 case "GREETING": return "greeter";
                 default: return "searcher";
@@ -41,13 +50,33 @@ const workflow = new StateGraph<any>({
     .addEdge("flight", END)
     .addEdge("emergency", END)
     .addEdge("budget", END)
-    .addEdge("autoPlan", END);
+    // Auto Plan Workflow
+    .addEdge("initAuto", "batchAuto")
+    .addConditionalEdges(
+        "batchAuto",
+        (state: AgentState) => {
+            const total = state.combinations?.length || 0;
+            const current = state.batchIndex || 0;
+            // If we have processed less than total, loop back
+            if (current < total) {
+                return "batchAuto";
+            }
+            return "finalizeAuto";
+        }
+    )
+    .addEdge("finalizeAuto", END);
 
 export const graph = workflow.compile();
 
 // Streaming Wrapper
 export async function generateGraphResponse(query: string, ip: string = "127.0.0.1") {
-    const stream = await graph.streamEvents({ query, ip }, { version: "v2" });
+    const stream = await graph.streamEvents(
+        { query, ip },
+        {
+            version: "v2",
+            recursionLimit: 150 // Increase limit for batch processing
+        }
+    );
 
     return new ReadableStream({
         async start(controller) {
@@ -57,7 +86,12 @@ export async function generateGraphResponse(query: string, ip: string = "127.0.0
             try {
                 sendLog("🚦 Router: Classifying intent...");
 
+                // let sentLogCount = 0; // Removed unused variable
+
                 for await (const event of stream) {
+                    // Debug Log
+                    // console.log("Event:", event.event, event.metadata?.langgraph_node, event.data?.output ? "Has Output" : "No Output");
+
                     // 1. Handle LLM Token Streaming
                     if (event.event === "on_chat_model_stream") {
                         const chunk = event.data.chunk;
@@ -67,22 +101,13 @@ export async function generateGraphResponse(query: string, ip: string = "127.0.0
                     }
 
                     // 2. Handle Node State Updates (Logs)
-                    // When a node finishes, it typically emits 'on_chain_end' with the output state.
-                    // We check for specific nodes.
                     if (event.event === "on_chain_end" && event.metadata && event.metadata.langgraph_node) {
                         const nodeName = event.metadata.langgraph_node;
                         const output = event.data.output;
 
-                        if (["searcher", "flight", "emergency", "budget", "autoPlan"].includes(nodeName)) {
-                            // Logic to extract NEW logs?
-                            // State updates might be cumulative or partial.
-                            // Simplified: If output has 'logs', strictly strictly speaking we might reprint logs if we aren't careful.
-                            // But 'output' of the node function usually contains the *delta* or the *full return value* depending on implementation.
-                            // In nodes.ts, we return { logs: [...] }.
-                            // We should check if these logs have been sent?
-                            // Since we don't track history here easily, we might reprint. 
-                            // BUT, for now, let's just send them.
+                        if (["searcher", "flight", "emergency", "budget", "initAuto", "batchAuto", "finalizeAuto"].includes(nodeName)) {
                             if (output && output.logs && Array.isArray(output.logs)) {
+                                console.log(`[Graph] Node ${nodeName} emitted ${output.logs.length} logs.`); // Debug
                                 output.logs.forEach((log: string) => sendLog(log));
                             }
                         }
