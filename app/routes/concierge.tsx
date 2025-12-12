@@ -246,16 +246,7 @@ export default function Concierge() {
             const now = new Date();
             const timeString = now.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
 
-            const prompt = `
-Please generate a welcome message with the following specific introduction in Korean:
-"안녕하세요, 현재 시각 ${timeString}입니다. 고객님께서 별도로 질문하지 않으셔도, 바로 떠나실 수 있는 추천 여행지를 제가 먼저 준비해 보았습니다."
-
-Then, immediately perform these two checks and present the results:
-1. EMERGENCY: Check for flights departing from ICN to popular nearby destinations (NRT, KIX, FUK, DAD, BKK, TPE) departing TODAY (within next 4 hours).
-2. BUDGET: Plan a 7-day trip with a TOTAL budget of 1,000,000 KRW (Flight + Accom).
-
-Format the output nicely.
-            `.trim();
+            const prompt = `RECOMMEND_TRIP_FROM_CURRENT_LOCATION_TRIGGER ${timeString}`.trim();
             // Send hidden message
             sendMessage(prompt, true);
         }

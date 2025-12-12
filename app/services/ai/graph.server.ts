@@ -1,5 +1,5 @@
 import { StateGraph, END, START } from "@langchain/langgraph";
-import { type AgentState, routerNode, greeterNode, searcherNode, flightNode, emergencyNode, budgetNode } from "./nodes";
+import { type AgentState, routerNode, greeterNode, searcherNode, flightNode, emergencyNode, budgetNode, autoRecommendationNode } from "./nodes";
 
 // Build Graph
 const workflow = new StateGraph<any>({
@@ -21,6 +21,7 @@ const workflow = new StateGraph<any>({
     .addNode("flight", flightNode as any)
     .addNode("emergency", emergencyNode as any)
     .addNode("budget", budgetNode as any)
+    .addNode("autoPlan", autoRecommendationNode as any)
     .addEdge(START, "router")
     .addConditionalEdges(
         "router",
@@ -28,6 +29,7 @@ const workflow = new StateGraph<any>({
             switch (state.classification) {
                 case "EMERGENCY": return "emergency";
                 case "BUDGET": return "budget";
+                case "AUTO_PLAN": return "autoPlan";
                 case "FLIGHT": return "flight";
                 case "GREETING": return "greeter";
                 default: return "searcher";
@@ -38,7 +40,8 @@ const workflow = new StateGraph<any>({
     .addEdge("searcher", END)
     .addEdge("flight", END)
     .addEdge("emergency", END)
-    .addEdge("budget", END);
+    .addEdge("budget", END)
+    .addEdge("autoPlan", END);
 
 export const graph = workflow.compile();
 
@@ -70,15 +73,17 @@ export async function generateGraphResponse(query: string, ip: string = "127.0.0
                             // Specific logs based on intent
                             if (stateUpdate.classification === "EMERGENCY") sendLog("🚨 Activating Emergency Flight Protocol...");
                             else if (stateUpdate.classification === "BUDGET") sendLog("💰 Activating Budget Planner...");
+                            else if (stateUpdate.classification === "AUTO_PLAN") sendLog("🤖 Generating Daily Recommendation...");
                             else if (stateUpdate.classification === "SEARCH") sendLog("🔍 Searcher: Looking up rooms...");
                             else if (stateUpdate.classification === "FLIGHT") sendLog("✈️ Flight Agent: Extracting details...");
                         }
-                    } else if (["searcher", "flight", "emergency", "budget"].includes(nodeName)) {
+                    } else if (["searcher", "flight", "emergency", "budget", "autoPlan"].includes(nodeName)) {
                         if (stateUpdate.logs && Array.isArray(stateUpdate.logs)) {
                             stateUpdate.logs.forEach(log => sendLog(log));
                         }
                         if (nodeName === "budget") sendLog("📝 Compiling Budget Itinerary...");
                         if (nodeName === "emergency") sendLog("📝 Listing Immediate Departures...");
+                        if (nodeName === "autoPlan") sendLog("📝 Synthesizing Response...");
                     }
 
                     if (stateUpdate.answer) {
