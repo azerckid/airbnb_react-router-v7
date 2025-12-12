@@ -168,12 +168,12 @@ export async function autoRecommendationNode(state: AgentState) {
     // 한국 시간대의 날짜를 정확히 계산
     const koreaDateStr = now.toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }); // YYYY-MM-DD 형식
     const todayDate = koreaDateStr;
-    
+
     // 한국 시간대 기준 날짜 계산 헬퍼 함수
     const getKoreaDate = (date: Date): string => {
         return date.toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
     };
-    
+
     const addDaysToKoreaDate = (dateStr: string, days: number): string => {
         // YYYY-MM-DD 형식의 날짜 문자열을 파싱
         const [year, month, day] = dateStr.split('-').map(Number);
@@ -181,7 +181,7 @@ export async function autoRecommendationNode(state: AgentState) {
         date.setDate(date.getDate() + days);
         return getKoreaDate(date);
     };
-    
+
     // 디버깅: 현재 시간 정보 로깅
     const koreaTimeStr = now.toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
     logs.push(`📅 검색 날짜: 오늘 (${todayDate}) 및 내일 (한국 시간 기준)`);
@@ -273,10 +273,14 @@ export async function autoRecommendationNode(state: AgentState) {
         }
     }
 
-    // 3.3. 각 조합에 대해 항공편 검색
+    // 3.3. 각 조합에 대해 항공편 검색 (배치 처리: 10개씩 묶어서 처리)
+    const BATCH_SIZE = 10;
+    const BATCH_DELAY = 2000; // 배치 사이 대기 시간 (2초)
+    
     logs.push(`\n🔍 ${searchCombinations.length}개 조합에 대해 항공편 검색 시작...`);
     logs.push(`   전략: 각 조합에서 가장 빠른 출발 항공편 1개만 찾기`);
-    logs.push(`   검색 범위: 오늘 날짜 → 없으면 다음날 → 없으면 항공편 없음으로 간주\n`);
+    logs.push(`   검색 범위: 오늘 날짜 → 없으면 다음날 → 없으면 항공편 없음으로 간주`);
+    logs.push(`   배치 처리: ${BATCH_SIZE}개씩 묶어서 처리, 배치 사이 ${BATCH_DELAY / 1000}초 대기\n`);
 
     const searchResults: Array<{
         origin: string;
@@ -292,47 +296,63 @@ export async function autoRecommendationNode(state: AgentState) {
     let firstFlightResult: typeof searchResults[0] | null = null;
     let searchedCount = 0;
 
-    for (const combo of searchCombinations) {
-        searchedCount++;
+    // 배치로 나누기
+    const batches: typeof searchCombinations[] = [];
+    for (let i = 0; i < searchCombinations.length; i += BATCH_SIZE) {
+        batches.push(searchCombinations.slice(i, i + BATCH_SIZE));
+    }
 
-        // 진행 상황 로깅 (10개마다)
-        if (searchedCount % 10 === 0 || searchedCount === 1) {
-            logs.push(`   진행: ${searchedCount}/${searchCombinations.length} (${Math.round(searchedCount / searchCombinations.length * 100)}%)`);
-        }
+    logs.push(`   총 ${batches.length}개 배치로 나누어 처리합니다.\n`);
 
-        try {
-            const flight = await searchFirstAvailableFlight(
-                combo.origin,
-                combo.destination,
-                todayDate
-            );
+    // 각 배치 처리
+    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+        const batch = batches[batchIndex];
+        const batchNumber = batchIndex + 1;
+        
+        logs.push(`   📦 배치 ${batchNumber}/${batches.length} 처리 중... (${batch.length}개 조합)`);
 
-            const result = {
-                origin: combo.origin,
-                originName: combo.originName,
-                destination: combo.destination,
-                destinationCity: combo.destinationCity,
-                destinationCountry: combo.destinationCountry,
-                flight: flight,
-                searchDate: flight ? flight.departure.at.split('T')[0] : null
-            };
+        // 배치 내 각 조합 처리
+        for (const combo of batch) {
+            searchedCount++;
 
-            searchResults.push(result);
-
-            // 첫 번째 항공편 발견 시
-            if (flight && !firstFlightFound) {
-                firstFlightFound = true;
-                firstFlightResult = result;
-                logs.push(`\n   ✅ 첫 번째 항공편 발견! (${searchedCount}번째 조합)`);
-                logs.push(`   ${combo.origin} → ${combo.destination} (${combo.destinationCity})`);
-                logs.push(`   항공편: ${flight.airline} ${flight.flightNumber}`);
-                logs.push(`   출발: ${new Date(flight.departure.at).toLocaleString('ko-KR')}`);
-                logs.push(`   비용: ${flight.price.total} ${flight.price.currency}`);
-                logs.push(`   ⚡ 즉시 스트리밍 시작 예정 (나머지 조합은 백그라운드에서 계속 검색)\n`);
+            // 진행 상황 로깅
+            if (searchedCount % 10 === 0 || searchedCount === 1) {
+                logs.push(`      진행: ${searchedCount}/${searchCombinations.length} (${Math.round(searchedCount / searchCombinations.length * 100)}%)`);
             }
-        } catch (e) {
-            // 에러 발생 시에도 결과에 추가 (null로)
-            searchResults.push({
+
+            try {
+                const flight = await searchFirstAvailableFlight(
+                    combo.origin,
+                    combo.destination,
+                    todayDate
+                );
+
+                const result = {
+                    origin: combo.origin,
+                    originName: combo.originName,
+                    destination: combo.destination,
+                    destinationCity: combo.destinationCity,
+                    destinationCountry: combo.destinationCountry,
+                    flight: flight,
+                    searchDate: flight ? flight.departure.at.split('T')[0] : null
+                };
+
+                searchResults.push(result);
+
+                // 첫 번째 항공편 발견 시
+                if (flight && !firstFlightFound) {
+                    firstFlightFound = true;
+                    firstFlightResult = result;
+                    logs.push(`\n      ✅ 첫 번째 항공편 발견! (${searchedCount}번째 조합)`);
+                    logs.push(`      ${combo.origin} → ${combo.destination} (${combo.destinationCity})`);
+                    logs.push(`      항공편: ${flight.airline} ${flight.flightNumber}`);
+                    logs.push(`      출발: ${new Date(flight.departure.at).toLocaleString('ko-KR')}`);
+                    logs.push(`      비용: ${flight.price.total} ${flight.price.currency}`);
+                    logs.push(`      ⚡ 즉시 스트리밍 시작 예정 (나머지 조합은 백그라운드에서 계속 검색)\n`);
+                }
+            } catch (e) {
+                // 에러 발생 시에도 결과에 추가 (null로)
+                searchResults.push({
                 origin: combo.origin,
                 originName: combo.originName,
                 destination: combo.destination,
@@ -343,8 +363,16 @@ export async function autoRecommendationNode(state: AgentState) {
             });
             // 에러는 로깅만 하고 계속 진행
             if (searchedCount % 10 === 0) {
-                logs.push(`   ⚠️ ${combo.origin} → ${combo.destination}: 검색 실패 (계속 진행)`);
+                logs.push(`      ⚠️ ${combo.origin} → ${combo.destination}: 검색 실패 (계속 진행)`);
             }
+        }
+
+        // 배치 완료 후 대기 (마지막 배치 제외)
+        if (batchIndex < batches.length - 1) {
+            logs.push(`   ⏸️  배치 ${batchNumber} 완료. ${BATCH_DELAY / 1000}초 대기 후 다음 배치 시작...\n`);
+            await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
+        } else {
+            logs.push(`   ✅ 마지막 배치 ${batchNumber} 완료.\n`);
         }
     }
 
@@ -560,7 +588,7 @@ export async function autoRecommendationNode(state: AgentState) {
         searchStats: {
             totalCombinations: searchResults.length,
             foundFlights: validResults.length,
-            firstFlightFoundAt: firstFlightResult ? searchResults.findIndex(r => r.origin === firstFlightResult.origin && r.destination === firstFlightResult.destination) + 1 : null
+            firstFlightFoundAt: firstFlightResult && firstFlightResult.flight ? searchResults.findIndex(r => r.origin === firstFlightResult!.origin && r.destination === firstFlightResult!.destination) + 1 : null
         }
     };
 
@@ -721,11 +749,12 @@ export async function autoRecommendationNode(state: AgentState) {
         foundRooms: selectedRoom ? [selectedRoom] : [],
         logs
     };
+}
 
-    /* ============================================
-     * Phase 3부터는 아래 코드를 사용할 예정
-     * 현재는 Phase 2만 구현 완료 상태
-     * ============================================
+/* ============================================
+ * Phase 3부터는 아래 코드를 사용할 예정
+ * 현재는 Phase 2만 구현 완료 상태
+ * ============================================
      * 
     // 2.5. Get available destinations (locations with accommodation data)
     logs.push("🏨 Finding destinations with accommodation data...");
