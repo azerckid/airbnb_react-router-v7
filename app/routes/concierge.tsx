@@ -17,7 +17,7 @@ import {
 import { FaPaperPlane, FaRobot, FaUser, FaPlus, FaHistory, FaBars, FaTrash } from "react-icons/fa";
 import { motion, AnimatePresence } from "framer-motion";
 import type { MetaArgs } from "react-router";
-import { useLoaderData, Link } from "react-router";
+import { useLoaderData, Link as RouterLink } from "react-router";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -35,6 +35,7 @@ interface Message {
     role: "user" | "ai" | "assistant";
     text: string;
     logs?: string[];
+    isStreaming?: boolean; // 스트리밍 중인지 여부
 }
 
 interface ConversationItem {
@@ -210,7 +211,8 @@ export default function Concierge() {
             const decoder = new TextDecoder();
             let aiResponseText = "";
 
-            setMessages((prev) => [...prev, { role: "assistant", text: "" }]);
+            // 스트리밍 중인 메시지 추가
+            setMessages((prev) => [...prev, { role: "assistant", text: "", isStreaming: true }]);
 
             while (true) {
                 const { done, value } = await reader.read();
@@ -242,19 +244,18 @@ export default function Concierge() {
 
                         let safeText = aiResponseText;
 
-                        // Fix: [ Text ] ( /url ) -> [Text](/url)
-                        // 1. Remove space between ] and (
-                        safeText = safeText.replace(/\]\s+\(/g, "](");
-
-                        // 2. Remove spaces inside keys and values of the link structure if obvious
-                        // Focusing on standard Markdown links
-                        safeText = safeText.replace(/\[\s+(.*?)\s+\]/g, "[$1]"); // Trim brackets
-                        safeText = safeText.replace(/\(\s*(.*?)\s*\)/g, "($1)"); // Trim parens outer
-
-                        // 3. Remove spaces inside /rooms/ path specifically (high confidence fix)
-                        safeText = safeText.replace(/\/rooms\s+\//g, "/rooms/");
+                        // Fix markdown links: [ Text ] ( /url ) -> [Text](/url)
+                        // Match markdown link pattern: [text](url)
+                        safeText = safeText.replace(/\[([^\]]*)\]\s*\(\s*([^)]*)\s*\)/g, (match, linkText, url) => {
+                            // Remove spaces from link text (trim only)
+                            const cleanedText = linkText.trim();
+                            // Remove ALL spaces from URL (critical for proper parsing)
+                            const cleanedUrl = url.replace(/\s+/g, '');
+                            return `[${cleanedText}](${cleanedUrl})`;
+                        });
 
                         lastMsg.text = safeText;
+                        lastMsg.isStreaming = true; // 스트리밍 중임을 표시
                         if (newLogs.length > 0) {
                             lastMsg.logs = [...(lastMsg.logs || []), ...newLogs];
                         }
@@ -265,6 +266,35 @@ export default function Concierge() {
                     scrollRef.current.scrollIntoView({ behavior: "smooth" });
                 }
             }
+
+            // 스트리밍 완료 후 강제 리렌더링을 위해 메시지 업데이트
+            // 약간의 딜레이를 두어 ReactMarkdown이 완전한 텍스트를 파싱하도록 함
+            setTimeout(() => {
+                setMessages((prev) => {
+                    const newMsgs = [...prev];
+                    const lastMsg = newMsgs[newMsgs.length - 1];
+                    if (lastMsg && (lastMsg.role === "assistant" || lastMsg.role === "ai")) {
+                        // 스트리밍 완료 표시 및 텍스트 재정리
+                        let finalText = lastMsg.text;
+                        
+                        // 최종 정리: 마크다운 링크 형식 정리 (정확한 패턴 매칭)
+                        // Match markdown link pattern: [text](url) and clean both parts
+                        finalText = finalText.replace(/\[([^\]]*)\]\s*\(\s*([^)]*)\s*\)/g, (match, linkText, url) => {
+                            const cleanedText = linkText.trim();
+                            const cleanedUrl = url.replace(/\s+/g, '');
+                            return `[${cleanedText}](${cleanedUrl})`;
+                        });
+                        
+                        // 스트리밍 완료 플래그 제거하여 강제 리렌더링
+                        return newMsgs.map((msg, idx) => 
+                            idx === newMsgs.length - 1 
+                                ? { ...msg, text: finalText, isStreaming: false }
+                                : msg
+                        );
+                    }
+                    return newMsgs;
+                });
+            }, 100); // 100ms 딜레이로 ReactMarkdown이 완전한 텍스트를 파싱하도록
         } catch (error) {
             console.error("Chat error:", error);
             setMessages((prev) => [...prev, { role: "assistant", text: "Sorry, I encountered an error. Please try again." }]);
@@ -324,7 +354,7 @@ export default function Concierge() {
                 <Box p={3} bg="orange.100" color="orange.800" borderRadius="md" fontSize="sm">
                     <Text fontWeight="bold">Guest Mode</Text>
                     <Text>Chat history is not saved.</Text>
-                    <Link to="/login" style={{ textDecoration: 'underline' }}>Log in here</Link>
+                    <RouterLink to="/login" style={{ textDecoration: 'underline' }}>Log in here</RouterLink>
                 </Box>
             )}
 
@@ -505,6 +535,7 @@ export default function Concierge() {
                                             className="markdown-body"
                                             fontSize="md"
                                             lineHeight="1.6"
+                                            key={`msg-${idx}-${msg.isStreaming ? 'streaming' : 'complete'}`} // 스트리밍 상태에 따라 key 변경하여 강제 리렌더링
                                             css={{
                                                 "& p": { marginBottom: "0.5rem" },
                                                 "& ul": { paddingLeft: "1.2rem", marginBottom: "0.5rem" },
@@ -524,17 +555,58 @@ export default function Concierge() {
                                             }}
                                         >
                                             <ReactMarkdown
+                                                key={`markdown-${idx}-${msg.isStreaming ? 'streaming' : 'complete'}`} // ReactMarkdown도 강제 리렌더링
                                                 remarkPlugins={[remarkGfm]}
                                                 components={{
                                                     a: ({ node, ...props }) => {
                                                         const isExternal = props.href?.startsWith('http');
-                                                        return (
-                                                            <a
-                                                                {...props}
-                                                                target={isExternal ? "_blank" : undefined}
-                                                                rel={isExternal ? "noopener noreferrer" : undefined}
-                                                            />
-                                                        );
+                                                        const href = props.href || '';
+                                                        
+                                                        // External links - open in new tab
+                                                        if (isExternal) {
+                                                            return (
+                                                                <a
+                                                                    {...props}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    style={{
+                                                                        color: "#3182ce",
+                                                                        textDecoration: "underline",
+                                                                        fontWeight: "bold",
+                                                                        cursor: "pointer",
+                                                                        transition: "color 0.2s"
+                                                                    }}
+                                                                    onMouseEnter={(e) => {
+                                                                        e.currentTarget.style.color = "#2b6cb0";
+                                                                    }}
+                                                                    onMouseLeave={(e) => {
+                                                                        e.currentTarget.style.color = "#3182ce";
+                                                                    }}
+                                                                />
+                                                            );
+                                                        } else {
+                                                            // Internal links - use React Router Link
+                                                            return (
+                                                                <RouterLink
+                                                                    to={href}
+                                                                    style={{
+                                                                        color: "#3182ce",
+                                                                        textDecoration: "underline",
+                                                                        fontWeight: "bold",
+                                                                        cursor: "pointer",
+                                                                        transition: "color 0.2s"
+                                                                    }}
+                                                                    onMouseEnter={(e) => {
+                                                                        e.currentTarget.style.color = "#2b6cb0";
+                                                                    }}
+                                                                    onMouseLeave={(e) => {
+                                                                        e.currentTarget.style.color = "#3182ce";
+                                                                    }}
+                                                                >
+                                                                    {props.children}
+                                                                </RouterLink>
+                                                            );
+                                                        }
                                                     }
                                                 }}
                                             >

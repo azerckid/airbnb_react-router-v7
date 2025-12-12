@@ -293,10 +293,13 @@ export async function autoRecommendationNode(state: AgentState) {
           Describe the flight Option (Airline, Flight Number, Departure Time, Arrival Time, Cost) smoothly.
           (Example: "인천공항에서 ${departureTimeStr}에 출발하여 ${arrivalTimeStr}에 도착하는 ${bestFlight?.airline || '항공편'}이 ${hoursFromNow}시간 내 출발 가능한 최적의 옵션으로 검색되었습니다.")
           (CRITICAL: You MUST make the text "[Airline Name] ([Departure Time])" a clickable Markdown link using the [Flight Link] from context.
-           Example: [${bestFlight?.airline || '항공편'} (${departureTimeStr})](https://www.skyscanner.co.kr/...))
+           Example: [${bestFlight?.airline || '항공편'} (${departureTimeStr})](${flightLink})
+           IMPORTANT: The URL in parentheses MUST NOT contain any spaces. Write it as a single continuous string without spaces.)
           - Mention if multiple airports were searched and how many flights were found.
         - **Present the Accommodation**: Recommend the hotel in the destination city.
-          (CRITICAL: STRICTLY format the Room link as: [RoomTitle](/rooms/${pickedRoom ? pickedRoom.id : ""}). Do NOT add spaces inside the link syntax.)
+          (CRITICAL: STRICTLY format the Room link as: [RoomTitle](/rooms/${pickedRoom ? pickedRoom.id : ""}). 
+           IMPORTANT: Do NOT add spaces inside the link syntax. The URL path must be continuous without spaces.
+           Example: [아사쿠사 호스텔 도카이소](/rooms/cmivvx0g7000qt6h775oqytji) - NO spaces in the URL part.)
         - **Cost & Summary**: Briefly mention the meal costs and the total estimated trip budget compared to the target.
           Emphasize that this is a "지금 당장 출발 가능한" (can depart right now) trip option.
         
