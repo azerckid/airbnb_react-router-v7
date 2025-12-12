@@ -6,7 +6,7 @@ import { Document } from "@langchain/core/documents";
 import { searchRooms } from "./core.server";
 import { searchFlights, type FlightOffer, filterFlightsWithinHours } from "./tools/flight.server";
 import { searchStructuredRooms, type RoomListing } from "./tools/recommendation.server";
-import { getIpLocation, findNearestAirport, findNearestAirports } from "./tools/location.server";
+import { getIpLocation, findNearestAirport, findNearestAirports, getAirportLocation } from "./tools/location.server";
 
 // 1. Define State
 export interface AgentState {
@@ -204,10 +204,26 @@ export async function autoRecommendationNode(state: AgentState) {
         if (bestFlight.price.currency !== "KRW") flightCost *= 1450;
     }
 
-    // 4. Room Search
+    // 4. Get destination location from arrival airport
+    const arrivalAirportCode = bestFlight ? bestFlight.arrival.iataCode : dest;
+    logs.push(`📍 Getting location info for destination airport: ${arrivalAirportCode}`);
+
+    let destinationLocation = await getAirportLocation(arrivalAirportCode);
+    let searchLocation = "Japan"; // Default fallback
+
+    if (destinationLocation) {
+        // Prefer country name, fallback to city name
+        searchLocation = destinationLocation.country || destinationLocation.city || "Japan";
+        logs.push(`   ✓ Destination: ${destinationLocation.city || 'Unknown'}, ${destinationLocation.country || 'Unknown'}`);
+        logs.push(`   ✓ Searching rooms in: ${searchLocation}`);
+    } else {
+        logs.push(`   ⚠️ Could not determine destination location, using default: ${searchLocation}`);
+    }
+
+    // 5. Room Search - Use dynamic location
     logs.push("Please wait, searching for rooms...");
     const rooms = await searchStructuredRooms({
-        location: "Japan",
+        location: searchLocation,
         limit: 3,
         maxPrice: 150000
     });
@@ -258,7 +274,10 @@ export async function autoRecommendationNode(state: AgentState) {
     User Location: ${originCity}
     Nearby Airports: ${airports.map(a => `${a.name} (${a.iataCode})`).join(', ')}
     Selected Departure Airport: ${bestFlight ? (bestFlight as any).originAirportName || originCode : originCode}
-    Destination: ${dest}
+    Destination Airport: ${arrivalAirportCode}
+    Destination Location: ${destinationLocation ? `${destinationLocation.city || 'Unknown'}, ${destinationLocation.country || 'Unknown'}` : 'Unknown'}
+    Destination City: ${destinationLocation?.city || 'Unknown'}
+    Destination Country: ${destinationLocation?.country || 'Unknown'}
     Client Time: ${clientTime}
     Search Criteria: Flights departing within ${hoursFromNow} hours from now
     
@@ -267,7 +286,8 @@ export async function autoRecommendationNode(state: AgentState) {
     Flight Link: ${flightLink}
     Available Flights: ${validFlights.length} flights found within ${hoursFromNow} hours
     
-    Accommodation: ${pickedRoom ? pickedRoom.title : "Standard Hotel"} (${pickedRoom ? pickedRoom.city : "City"})
+    Accommodation Search Location: ${searchLocation}
+    Accommodation: ${pickedRoom ? pickedRoom.title : "Standard Hotel"} (${pickedRoom ? pickedRoom.city : "City"}, ${pickedRoom ? pickedRoom.country : "Country"})
     Room ID: ${pickedRoom ? pickedRoom.id : ""}
     Room Cost: ${Math.floor(roomCostPerNight)} KRW/night * ${days} days = ${Math.floor(totalRoomCost)} KRW
     
