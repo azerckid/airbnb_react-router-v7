@@ -201,7 +201,9 @@ export default function Concierge() {
                     if (line.startsWith("__LOG__ ")) {
                         newLogs.push(line.replace("__LOG__ ", ""));
                     } else {
-                        newText += line;
+                        // Restore the newline that was removed by .split("\n")
+                        // Note: This adds a newline even to the last line, but for Markdown that is usually fine/ignored.
+                        newText += line + "\n";
                     }
                 }
 
