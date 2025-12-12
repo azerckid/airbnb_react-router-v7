@@ -143,27 +143,173 @@ export async function autoRecommendationNode(state: AgentState) {
 
     logs.push(`   ✓ 총 ${searchCombinations.length}개 검색 조합 생성 완료`);
     logs.push(`   ✓ 계산: ${koreanAirports.length}개 출발지 × ${destinationCities.length}개 목적지 = ${searchCombinations.length}개 조합`);
-    
+
     // 조합 샘플 출력 (처음 5개)
     logs.push(`\n   조합 샘플 (처음 5개):`);
     searchCombinations.slice(0, 5).forEach((combo, idx) => {
         logs.push(`   ${idx + 1}. ${combo.origin} → ${combo.destination} (${combo.destinationCity}, ${combo.destinationCountry})`);
     });
-    
+
     logs.push("=".repeat(60));
     logs.push("Phase 2: 검색 조합 생성 완료");
     logs.push("=".repeat(60));
     logs.push(`\n✅ Phase 2 완료: ${searchCombinations.length}개 검색 조합 준비 완료\n`);
 
     // ============================================
-    // Phase 2 완료 - 다음 Phase는 Phase 3에서 구현 예정
+    // Phase 3: 항공편 검색 로직 구현
     // ============================================
-    // TODO: Phase 3에서 searchCombinations를 사용하여 항공편 검색 진행
-    
-    // Phase 2 검증용 임시 반환 (실제 구현 시 제거)
+    logs.push("=".repeat(60));
+    logs.push("Phase 3: 항공편 검색 시작");
+    logs.push("=".repeat(60));
+
+    // 3.1. 날짜 설정
+    const today = new Date();
+    const todayDate = today.toISOString().split('T')[0];
+    logs.push(`📅 검색 날짜: 오늘 (${todayDate}) 및 내일`);
+
+    // 3.2. searchFirstAvailableFlight 함수 정의
+    async function searchFirstAvailableFlight(
+        origin: string,
+        destination: string,
+        todayDate: string
+    ): Promise<FlightOffer | null> {
+        // 1. 오늘 날짜로 항공편 검색 (시간 필터 없음, 모든 항공편)
+        const todayFlights = await searchFlights(origin, destination, todayDate);
+        if (Array.isArray(todayFlights) && todayFlights.length > 0) {
+            // 출발 시간 기준 정렬 후 첫 번째 반환
+            todayFlights.sort((a, b) => {
+                return new Date(a.departure.at).getTime() - new Date(b.departure.at).getTime();
+            });
+            return todayFlights[0];
+        }
+        
+        // 2. 다음날 날짜로 검색
+        const tomorrow = new Date(todayDate);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const tomorrowDate = tomorrow.toISOString().split('T')[0];
+        
+        const tomorrowFlights = await searchFlights(origin, destination, tomorrowDate);
+        if (Array.isArray(tomorrowFlights) && tomorrowFlights.length > 0) {
+            tomorrowFlights.sort((a, b) => {
+                return new Date(a.departure.at).getTime() - new Date(b.departure.at).getTime();
+            });
+            return tomorrowFlights[0];
+        }
+        
+        // 3. 오늘과 내일 모두 없으면 null 반환
+        return null;
+    }
+
+    // 3.3. 각 조합에 대해 항공편 검색
+    logs.push(`\n🔍 ${searchCombinations.length}개 조합에 대해 항공편 검색 시작...`);
+    logs.push(`   전략: 각 조합에서 가장 빠른 출발 항공편 1개만 찾기`);
+    logs.push(`   검색 범위: 오늘 날짜 → 없으면 다음날 → 없으면 항공편 없음으로 간주\n`);
+
+    const searchResults: Array<{
+        origin: string;
+        originName: string;
+        destination: string;
+        destinationCity: string;
+        destinationCountry: string;
+        flight: FlightOffer | null;
+        searchDate: string | null;
+    }> = [];
+
+    let firstFlightFound = false;
+    let firstFlightResult: typeof searchResults[0] | null = null;
+    let searchedCount = 0;
+
+    for (const combo of searchCombinations) {
+        searchedCount++;
+        
+        // 진행 상황 로깅 (10개마다)
+        if (searchedCount % 10 === 0 || searchedCount === 1) {
+            logs.push(`   진행: ${searchedCount}/${searchCombinations.length} (${Math.round(searchedCount / searchCombinations.length * 100)}%)`);
+        }
+
+        try {
+            const flight = await searchFirstAvailableFlight(
+                combo.origin,
+                combo.destination,
+                todayDate
+            );
+
+            const result = {
+                origin: combo.origin,
+                originName: combo.originName,
+                destination: combo.destination,
+                destinationCity: combo.destinationCity,
+                destinationCountry: combo.destinationCountry,
+                flight: flight,
+                searchDate: flight ? flight.departure.at.split('T')[0] : null
+            };
+
+            searchResults.push(result);
+
+            // 첫 번째 항공편 발견 시
+            if (flight && !firstFlightFound) {
+                firstFlightFound = true;
+                firstFlightResult = result;
+                logs.push(`\n   ✅ 첫 번째 항공편 발견! (${searchedCount}번째 조합)`);
+                logs.push(`   ${combo.origin} → ${combo.destination} (${combo.destinationCity})`);
+                logs.push(`   항공편: ${flight.airline} ${flight.flightNumber}`);
+                logs.push(`   출발: ${new Date(flight.departure.at).toLocaleString('ko-KR')}`);
+                logs.push(`   비용: ${flight.price.total} ${flight.price.currency}`);
+                logs.push(`   ⚡ 즉시 스트리밍 시작 예정 (나머지 조합은 백그라운드에서 계속 검색)\n`);
+            }
+        } catch (e) {
+            // 에러 발생 시에도 결과에 추가 (null로)
+            searchResults.push({
+                origin: combo.origin,
+                originName: combo.originName,
+                destination: combo.destination,
+                destinationCity: combo.destinationCity,
+                destinationCountry: combo.destinationCountry,
+                flight: null,
+                searchDate: null
+            });
+            // 에러는 로깅만 하고 계속 진행
+            if (searchedCount % 10 === 0) {
+                logs.push(`   ⚠️ ${combo.origin} → ${combo.destination}: 검색 실패 (계속 진행)`);
+            }
+        }
+    }
+
+    logs.push(`\n✅ Phase 3 완료: ${searchResults.length}개 조합 검색 완료`);
+    const foundFlightsCount = searchResults.filter(r => r.flight !== null).length;
+    logs.push(`   항공편 발견: ${foundFlightsCount}개 조합에서 항공편 찾음`);
+    logs.push(`   항공편 없음: ${searchResults.length - foundFlightsCount}개 조합`);
+    logs.push("=".repeat(60));
+
+    // 3.4. 첫 항공편 발견 시 즉시 반환 (스트리밍용)
+    // TODO: Phase 5-7에서 숙소 검색 및 AI 응답 생성
+    if (firstFlightResult && firstFlightResult.flight) {
+        logs.push(`\n⚡ 첫 항공편 발견 - 즉시 응답 준비`);
+        // Phase 5-7에서 처리할 예정이므로, 일단 첫 결과만 반환
+        return {
+            answer: `Phase 3 완료: 첫 번째 항공편을 찾았습니다!\n\n항공편: ${firstFlightResult.flight.airline} ${firstFlightResult.flight.flightNumber}\n출발: ${firstFlightResult.origin} → ${firstFlightResult.destination}\n도착지: ${firstFlightResult.destinationCity}, ${firstFlightResult.destinationCountry}\n출발 시간: ${new Date(firstFlightResult.flight.departure.at).toLocaleString('ko-KR')}\n비용: ${firstFlightResult.flight.price.total} ${firstFlightResult.flight.price.currency}\n\n총 ${searchResults.length}개 조합 중 ${foundFlightsCount}개에서 항공편 발견\n\n다음 단계: Phase 5에서 숙소 검색 예정`,
+            foundFlights: [firstFlightResult.flight],
+            foundRooms: [],
+            logs
+        };
+    }
+
+    // 항공편이 하나도 없는 경우
+    if (foundFlightsCount === 0) {
+        logs.push(`\n⚠️ 모든 조합에서 항공편을 찾을 수 없었습니다.`);
+        return {
+            answer: `Phase 3 완료: ${searchResults.length}개 조합을 모두 검색했으나, 당장 출발 가능한 항공편을 찾을 수 없었습니다.\n\n검색 범위: 오늘 날짜 및 내일 날짜\n결과: 항공편 없음\n\n다른 날짜나 목적지로 검색해보시거나, 나중에 다시 시도해보시기 바랍니다.`,
+            foundFlights: [],
+            foundRooms: [],
+            logs
+        };
+    }
+
+    // 여러 항공편이 발견된 경우 (정렬 필요 - Phase 4에서 처리)
+    logs.push(`\n📊 ${foundFlightsCount}개 항공편 발견 - Phase 4에서 정렬 및 선택 예정`);
     return {
-        answer: `Phase 2 완료: ${searchCombinations.length}개 검색 조합이 생성되었습니다.\n\n출발지: ${koreanAirports.length}개 (${koreanAirports.map(a => a.iataCode).join(', ')})\n목적지: ${destinationCities.length}개 (${destinationCities.map(d => `${d.city}(${d.airportCode})`).join(', ')})\n\n검색 조합 샘플:\n${searchCombinations.slice(0, 10).map((c, i) => `${i + 1}. ${c.origin} → ${c.destination} (${c.destinationCity})`).join('\n')}\n\n... 총 ${searchCombinations.length}개 조합`,
-        foundFlights: [],
+        answer: `Phase 3 완료: ${foundFlightsCount}개 항공편을 찾았습니다.\n\n총 ${searchResults.length}개 조합 검색 완료\n항공편 발견: ${foundFlightsCount}개\n\n다음 단계: Phase 4에서 가장 빠른 출발 항공편 선택 예정`,
+        foundFlights: searchResults.filter(r => r.flight !== null).map(r => r.flight!),
         foundRooms: [],
         logs
     };
