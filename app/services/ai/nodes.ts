@@ -5,6 +5,7 @@ import { Document } from "@langchain/core/documents";
 import { searchRooms } from "./core.server";
 import { searchFlights, type FlightOffer } from "./tools/flight.server";
 import { searchStructuredRooms, type RoomListing } from "./tools/recommendation.server";
+import { getIpLocation, findNearestAirport } from "./tools/location.server";
 
 // 1. Define State
 export interface AgentState {
@@ -23,6 +24,7 @@ export interface AgentState {
     };
     foundFlights?: FlightOffer[];
     foundRooms?: RoomListing[];
+    ip?: string;
 }
 
 const openAIKey = process.env.OPENAI_API_KEY;
@@ -69,6 +71,12 @@ export async function emergencyNode(state: AgentState) {
     const logs: string[] = [];
     logs.push("🚨 Emergency Node Activated");
 
+    const model = new ChatOpenAI({
+        modelName: "gpt-4o-mini",
+        openAIApiKey: openAIKey,
+        temperature: 0.7
+    });
+
     // 1. Detect Location & Airport
     let originCode = "ICN"; // Default
     let originCity = "Seoul";
@@ -91,19 +99,64 @@ export async function emergencyNode(state: AgentState) {
         } else {
             logs.push(`⚠️ Location lookup failed. Defaulting to ICN.`);
         }
-        Query: { query }
+    }
 
-Recommend the best options for an immediate getaway.Be urgent and exciting!
-    `.trim();
+    const destinations = ["NRT", "KIX", "FUK", "DAD", "BKK", "TPE"];
+    const today = new Date().toISOString().split('T')[0];
 
-    const response = await ChatPromptTemplate.fromTemplate(template)
-        .pipe(model)
-        .pipe(new StringOutputParser())
-        .invoke({ context, query: state.query });
+    const flightPromises = destinations.map(dest =>
+        searchFlights(originCode, dest, today)
+    );
+
+    const results = await Promise.all(flightPromises);
+    // @ts-ignore
+    const validFlights = results.flat().filter(f => typeof f !== 'string') as FlightOffer[];
+
+    logs.push(`✈️ Found ${validFlights.length} flights departing from ${originCode} today.`);
+
+    const context = `
+    User Location: ${originCity}
+    Departure Airport: ${originCode}
+    Date: ${today}
+    
+    Available Flights (Immediate Departure):
+    ${JSON.stringify(validFlights.slice(0, 10), null, 2)}
+    `;
+
+    // 2. Generate Answer
+    const prompt = ChatPromptTemplate.fromMessages([
+        ["system", `
+        You are an Emergency Travel Agent. 
+        The user wants to leave IMMEDIATELY from ${originCity} (Airport: ${originCode}).
+        
+        Here are the flights departing TODAY (within next few hours):
+        {context}
+
+        Task:
+        1. Summarize the best 3-5 options based on departure time (soonest first).
+        2. Format clearly with Destination, Time, Airline, and Price.
+        3. Mention explicitly that these depart from ${originCode} (${originCity}).
+        4. Warn that prices and availability change rapidly.
+
+        Output in Korean.
+        `],
+        ["human", "{query}"],
+    ]);
+
+    const chain = prompt.pipe(model).pipe(new StringOutputParser());
+
+    // Fallback query if undefined
+    const safeQuery = state.query || "Show me emergency flights";
+
+    const answer = await chain.invoke({
+        query: safeQuery,
+        context
+    });
 
     return {
-        answer: response,
-        logs: [...logs, `found ${ allFlights.length } flights departing today.`]
+        answer,
+        foundFlights: validFlights,
+        logs
     };
 }
 
@@ -122,7 +175,7 @@ export async function budgetNode(state: AgentState) {
 
     let params = { budget: 1000000, days: 7, destination: "any" };
     try {
-        params = JSON.parse(extractJson.replace(/```json / g, "").replace(/```/g, "").trim());
+        params = JSON.parse(extractJson.replace(/```json/g, "").replace(/```/g, "").trim());
     } catch (e) { console.error("Json parse failed", e); }
 
     logs.push(`Parsed: Budget ${params.budget}, Days ${params.days}`);
