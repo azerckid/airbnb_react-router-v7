@@ -1,6 +1,5 @@
-
 import { StateGraph, END, START } from "@langchain/langgraph";
-import { type AgentState, routerNode, greeterNode, searcherNode, flightNode } from "./nodes";
+import { type AgentState, routerNode, greeterNode, searcherNode, flightNode, emergencyNode, budgetNode } from "./nodes";
 
 // Build Graph
 const workflow = new StateGraph<any>({
@@ -10,23 +9,35 @@ const workflow = new StateGraph<any>({
         context: { reducer: (x: any, y: any) => y ?? x },
         answer: { reducer: (x: any, y: any) => y ?? x },
         logs: { reducer: (x: string[], y: string[]) => y ? [...(x || []), ...y] : x },
+        params: { reducer: (x: any, y: any) => y ?? x },
+        foundFlights: { reducer: (x: any, y: any) => y ?? x },
+        foundRooms: { reducer: (x: any, y: any) => y ?? x },
     }
 })
     .addNode("router", routerNode as any)
     .addNode("greeter", greeterNode as any)
     .addNode("searcher", searcherNode as any)
     .addNode("flight", flightNode as any)
+    .addNode("emergency", emergencyNode as any)
+    .addNode("budget", budgetNode as any)
     .addEdge(START, "router")
     .addConditionalEdges(
         "router",
         (state: any) => {
-            if (state.classification === "FLIGHT") return "flight";
-            return state.classification === "GREETING" ? "greeter" : "searcher";
+            switch (state.classification) {
+                case "EMERGENCY": return "emergency";
+                case "BUDGET": return "budget";
+                case "FLIGHT": return "flight";
+                case "GREETING": return "greeter";
+                default: return "searcher";
+            }
         }
     )
     .addEdge("greeter", END)
     .addEdge("searcher", END)
-    .addEdge("flight", END);
+    .addEdge("flight", END)
+    .addEdge("emergency", END)
+    .addEdge("budget", END);
 
 export const graph = workflow.compile();
 
@@ -46,26 +57,27 @@ export async function generateGraphResponse(query: string) {
 
                 for await (const chunk of stream) {
                     const nodeName = Object.keys(chunk)[0];
+                    // safe casting
                     const stateUpdate = (chunk as any)[nodeName] as Partial<AgentState>;
+
+                    // Debug Log
+                    // console.log(`Node ${nodeName} finished`, stateUpdate);
 
                     if (nodeName === "router") {
                         if (stateUpdate.classification) {
                             sendLog(`🚦 Classification: ${stateUpdate.classification}`);
-                            if (stateUpdate.classification === "SEARCH") {
-                                sendLog("🔍 Searcher: Looking up rooms...");
-                            } else if (stateUpdate.classification === "FLIGHT") {
-                                sendLog("✈️ Flight Agent: Extracting details & Searching Amadeus...");
-                            }
+                            // Specific logs based on intent
+                            if (stateUpdate.classification === "EMERGENCY") sendLog("🚨 Activating Emergency Flight Protocol...");
+                            else if (stateUpdate.classification === "BUDGET") sendLog("💰 Activating Budget Planner...");
+                            else if (stateUpdate.classification === "SEARCH") sendLog("🔍 Searcher: Looking up rooms...");
+                            else if (stateUpdate.classification === "FLIGHT") sendLog("✈️ Flight Agent: Extracting details...");
                         }
-                    } else if (nodeName === "searcher") {
+                    } else if (["searcher", "flight", "emergency", "budget"].includes(nodeName)) {
                         if (stateUpdate.logs && Array.isArray(stateUpdate.logs)) {
                             stateUpdate.logs.forEach(log => sendLog(log));
                         }
-                        sendLog("📝 Generating detailed response...");
-                    } else if (nodeName === "flight") {
-                        if (stateUpdate.logs && Array.isArray(stateUpdate.logs)) {
-                            stateUpdate.logs.forEach(log => sendLog(log));
-                        }
+                        if (nodeName === "budget") sendLog("📝 Compiling Budget Itinerary...");
+                        if (nodeName === "emergency") sendLog("📝 Listing Immediate Departures...");
                     }
 
                     if (stateUpdate.answer) {

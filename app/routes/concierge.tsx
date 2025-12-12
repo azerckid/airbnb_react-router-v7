@@ -151,19 +151,18 @@ export default function Concierge() {
         }
     };
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!input.trim() || isLoading) return;
+    const sendMessage = async (text: string, isHidden: boolean = false) => {
+        if (!text.trim() || isLoading) return;
 
-        const userMessage = input.trim();
-        setInput("");
-        setMessages((prev) => [...prev, { role: "user", text: userMessage }]);
+        if (!isHidden) {
+            setMessages((prev) => [...prev, { role: "user", text }]);
+        }
         setIsLoading(true);
         setTimeout(scrollToBottom, 100);
 
         try {
             const formData = new URLSearchParams();
-            formData.append("message", input);
+            formData.append("message", text);
             if (conversationId) {
                 formData.append("conversationId", conversationId);
             }
@@ -178,8 +177,7 @@ export default function Concierge() {
             const existingHeader = response.headers.get("X-Conversation-Id");
             if (existingHeader && existingHeader !== conversationId) {
                 setConversationId(existingHeader);
-                // Refresh history to show new title
-                if (user) fetchHistory(); // Background refresh
+                if (user) fetchHistory();
             }
 
             if (!response.body) throw new Error("No response body");
@@ -220,7 +218,6 @@ export default function Concierge() {
                     }
                     return newMsgs;
                 });
-                // Check if scrollRef is valid before scrolling
                 if (scrollRef.current) {
                     scrollRef.current.scrollIntoView({ behavior: "smooth" });
                 }
@@ -232,6 +229,30 @@ export default function Concierge() {
             setIsLoading(false);
         }
     };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        sendMessage(input.trim());
+        setInput("");
+    };
+
+    // Auto-Welcome Trigger
+    const hasTriggeredRef = useRef(false);
+    useEffect(() => {
+        if (messages.length === 0 && !conversationId && !isLoading && !hasTriggeredRef.current) {
+            hasTriggeredRef.current = true;
+            const prompt = `
+Welcome the user to the AI Concierge.
+Then, immediately perform these two checks and present the results:
+1. EMERGENCY: Check for flights departing from ICN to popular nearby destinations (NRT, KIX, FUK, DAD, BKK, TPE) departing TODAY (within next 4 hours).
+2. BUDGET: Plan a 7-day trip with a TOTAL budget of 1,000,000 KRW (Flight + Accom).
+
+Format the output nicely.
+            `.trim();
+            // Send hidden message
+            sendMessage(prompt, true);
+        }
+    }, [messages.length, conversationId, isLoading]);
 
     const SidebarContent = () => (
         <VStack h="full" w="full" p={4} gap={4} align="stretch">
