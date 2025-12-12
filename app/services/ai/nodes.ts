@@ -91,7 +91,7 @@ export async function autoRecommendationNode(state: AgentState) {
     const model = new ChatOpenAI({
         modelName: "gpt-4o-mini",
         openAIApiKey: openAIKey,
-        temperature: 0.7
+        temperature: 0
     });
 
     // 2. Detect Location
@@ -123,11 +123,24 @@ export async function autoRecommendationNode(state: AgentState) {
 
     let bestFlight = validFlights[0];
     let flightCost = 300000; // Default estimate
+
+    // Fallback Mock if no flight found (For consistent Demo UX)
+    if (!bestFlight) {
+        logs.push("⚠️ No flights found, using Mock Flight for demo.");
+        bestFlight = {
+            id: "mock-flight",
+            airline: "Skyscanner Best Value",
+            flightNumber: "SK001",
+            departure: { iataCode: originCode, at: "10:00" },
+            arrival: { iataCode: dest, at: "12:00" },
+            duration: "2H",
+            price: { currency: "KRW", total: "300000" }
+        };
+    }
+
     if (bestFlight) {
         flightCost = parseFloat(bestFlight.price.total);
-        if (bestFlight.price.currency !== "KRW") flightCost *= 1450; // Approx EUR to KRW (Simple conversion)
-    } else {
-        logs.push("⚠️ No flights found, using estimate.");
+        if (bestFlight.price.currency !== "KRW") flightCost *= 1450;
     }
 
     // 4. Room Search
@@ -161,15 +174,23 @@ export async function autoRecommendationNode(state: AgentState) {
     const totalCost = Math.floor(flightCost + totalRoomCost + totalMeals);
     const targetBudget = 1000000;
 
+    // Generate Flight Link (Skyscanner: origin/dest/YYMMDD)
+    // flightDate is YYYY-MM-DD -> YYMMDD
+    const dateShort = flightDate.slice(2).replace(/-/g, '');
+    const flightLink = `https://www.skyscanner.co.kr/transport/flights/${originCode.toLowerCase()}/${dest.toLowerCase()}/${dateShort}`;
+
     const context = `
     User Location: ${originCity}
     Nearest Airport: ${originCode}
+    Destination: ${dest}
     Client Time: ${clientTime}
     
-    Flight: ${bestFlight ? `${bestFlight.airline} (Dep: ${bestFlight.departure.at})` : "Estimated Flight (Check availability)"}
+    Flight: ${bestFlight ? `${bestFlight.airline} (Dep: ${bestFlight.departure.at}, Arr: ${bestFlight.arrival.at})` : "Estimated Flight (Check availability)"}
     Flight Cost: ${Math.floor(flightCost)} KRW
+    Flight Link: ${flightLink}
     
     Accommodation: ${pickedRoom ? pickedRoom.title : "Standard Hotel"} (${pickedRoom ? pickedRoom.city : "City"})
+    Room ID: ${pickedRoom ? pickedRoom.id : ""}
     Room Cost: ${Math.floor(roomCostPerNight)} KRW/night * ${days} days = ${Math.floor(totalRoomCost)} KRW
     
     Meal Plan: ${mealPrice} KRW/meal * 3 meals * ${days} days = ${totalMeals} KRW
@@ -183,22 +204,26 @@ export async function autoRecommendationNode(state: AgentState) {
         ["system", `
         You are a smart travel concierge.
         
-        Task: Generate a welcome message and trip plan in Korean.
+        Task: Generate a welcome message and trip plan in Korean based on the provided Context.
         
         1. Greeting:
-        "안녕하세요, 현재 시각 ${clientTime}입니다. 고객님께서 별도로 질문하지 않으셔도, 바로 떠나실 수 있는 추천 여행지를 제가 먼저 준비해 보았습니다."
+        Start with: "안녕하세요! 현재 시각 ${clientTime}입니다. 고객님을 위해 바로 떠나실 수 있는 최적의 여행지를 엄선하여 준비했습니다."
 
         2. Plan Details (Narrative):
-        - "고객님의 가장 가까운 공항은 [Airport]입니다."
-        - "[Airport]에서 4시간 이내 출발(또는 가장 빠른) [Flight Info] 항공편이 있습니다. 비용은 약 [Cost]입니다."
-        - "7일간의 숙박지는 [Room Name] 등을 추천하며, 숙박비는 [RoomTotal]입니다."
-        - "식사는 한 끼 [MealPrice]원으로 계산하여 7일간 약 [MealTotal]원이 소요됩니다."
-        - "총 예상 비용은 약 [TotalCost]입니다. (기준 예산 [Target] 대비 [Comparison])"
+        - Start by mentioning the nearest airport comfortably.
+        - **Present the Flight**: Describe the flight Option (Airline, Departure Time, Arrival Time, Cost) smoothly.
+          (Example: "인천공항에서 14시에 출발하여 16시에 도착하는 홍콩 익스프레스가 가장 합리적인 옵션으로 검색되었습니다.")
+          (CRITICAL: You MUST make the text "[Airline Name] ([Departure Time])" a clickable Markdown link using the [Flight Link] from context.
+           Example: [Hong Kong Express (14:00)](https://www.skyscanner.co.kr/...))
+        - **Present the Accommodation**: Recommend the hotel.
+          (CRITICAL: STRICTLY format the Room link as: [RoomTitle](/rooms/${pickedRoom ? pickedRoom.id : ""}). Do NOT add spaces inside the link syntax.)
+        - **Cost & Summary**: Briefly mention the meal costs and the total estimated trip budget compared to the target.
         
-        Context:
+        Context Data:
         {context}
         
-        Tone: Professional, smooth, and convincing.
+        Tone: Polite, Professional (honorifics), and Concierge-like.
+        IMPORTANT: Do NOT output brackets like [Flight Info] literally. Replace them with the actual data from Context.
         `],
         ["human", "Recommend the trip now."]
     ]);

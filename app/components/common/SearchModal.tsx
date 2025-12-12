@@ -31,7 +31,7 @@ export function SearchModal() {
         // CheckIn/CheckOut could be added here similar to location
         // params.toString() handles encoding
 
-        navigate(`/?${params.toString()}`);
+        navigate(`/rooms?${params.toString()}`);
         setIsOpen(false);
     };
 

@@ -60,7 +60,28 @@ export default function Concierge() {
 
     const isMobile = useBreakpointValue({ base: true, md: false });
 
-    // Fetch History on Mount
+    // Load Session State on Mount
+    useEffect(() => {
+        const savedSubId = sessionStorage.getItem("ai_conversation_id");
+        const savedMessages = sessionStorage.getItem("ai_messages");
+
+        if (savedSubId) setConversationId(savedSubId);
+        if (savedMessages) {
+            try {
+                setMessages(JSON.parse(savedMessages));
+            } catch (e) {
+                console.error("Failed to parse saved messages", e);
+            }
+        }
+    }, []);
+
+    // Save Session State on Change
+    useEffect(() => {
+        if (conversationId) sessionStorage.setItem("ai_conversation_id", conversationId);
+        if (messages.length > 0) sessionStorage.setItem("ai_messages", JSON.stringify(messages));
+    }, [conversationId, messages]);
+
+    // Fetch History on Mount (User only)
     useEffect(() => {
         if (user) {
             fetchHistory();
@@ -97,8 +118,11 @@ export default function Concierge() {
     const handleNewChat = () => {
         setConversationId(null);
         setMessages([]);
+        sessionStorage.removeItem("ai_conversation_id");
+        sessionStorage.removeItem("ai_messages");
         if (user) fetchHistory();
         if (isMobile) setSidebarOpen(false);
+        hasTriggeredRef.current = false;
     };
 
     const handleSelectChat = async (id: string) => {
@@ -201,8 +225,6 @@ export default function Concierge() {
                     if (line.startsWith("__LOG__ ")) {
                         newLogs.push(line.replace("__LOG__ ", ""));
                     } else {
-                        // Restore the newline that was removed by .split("\n")
-                        // Note: This adds a newline even to the last line, but for Markdown that is usually fine/ignored.
                         newText += line + "\n";
                     }
                 }
@@ -213,7 +235,26 @@ export default function Concierge() {
                     const newMsgs = [...prev];
                     const lastMsg = newMsgs[newMsgs.length - 1];
                     if (lastMsg.role === "assistant" || lastMsg.role === "ai") {
-                        lastMsg.text = aiResponseText;
+                        // Regex to remove spaces inside [] and () of markdown links
+                        // e.g., [ Asak usa ] ( /rooms /123 ) -> [Asak usa](/rooms/123)
+                        // Note: We only remove spaces in the URL part mostly, but user screenshot showed spaces in Name too.
+                        // Let's safe-fix the URL part first which breaks rendering.
+
+                        let safeText = aiResponseText;
+
+                        // Fix: [ Text ] ( /url ) -> [Text](/url)
+                        // 1. Remove space between ] and (
+                        safeText = safeText.replace(/\]\s+\(/g, "](");
+
+                        // 2. Remove spaces inside keys and values of the link structure if obvious
+                        // Focusing on standard Markdown links
+                        safeText = safeText.replace(/\[\s+(.*?)\s+\]/g, "[$1]"); // Trim brackets
+                        safeText = safeText.replace(/\(\s*(.*?)\s*\)/g, "($1)"); // Trim parens outer
+
+                        // 3. Remove spaces inside /rooms/ path specifically (high confidence fix)
+                        safeText = safeText.replace(/\/rooms\s+\//g, "/rooms/");
+
+                        lastMsg.text = safeText;
                         if (newLogs.length > 0) {
                             lastMsg.logs = [...(lastMsg.logs || []), ...newLogs];
                         }
@@ -241,6 +282,18 @@ export default function Concierge() {
     // Auto-Welcome Trigger
     const hasTriggeredRef = useRef(false);
     useEffect(() => {
+        // Only trigger if:
+        // 1. Messages are empty (truly new chat)
+        // 2. No conversation ID (truly new)
+        // 3. Not loading
+        // 4. Not already triggered
+        // 5. AND NOT restored from session (if session restored, messages wouldn't be empty, but check added for safety)
+        const savedMessages = sessionStorage.getItem("ai_messages");
+        if (savedMessages && JSON.parse(savedMessages).length > 0) {
+            hasTriggeredRef.current = true; // Mark as triggered so we don't double trigger
+            return;
+        }
+
         if (messages.length === 0 && !conversationId && !isLoading && !hasTriggeredRef.current) {
             hasTriggeredRef.current = true;
             const now = new Date();
@@ -387,6 +440,8 @@ export default function Concierge() {
                     flex={1}
                     overflowY="auto"
                     p={{ base: 4, md: 8 }}
+                    pt={{ base: 24, md: 28 }} // Added top padding to clear fixed header
+                    pb={32} // Added bottom padding for input area
                     gap={6}
                     ref={scrollRef}
                     css={{ "&::-webkit-scrollbar": { width: "4px" }, "&::-webkit-scrollbar-thumb": { background: "rgba(0,0,0,0.1)" } }}
@@ -457,9 +512,32 @@ export default function Concierge() {
                                                 "& li": { marginBottom: "0.2rem" },
                                                 "& strong": { fontWeight: "bold" },
                                                 "& em": { fontStyle: "italic" },
+                                                "& a": {
+                                                    color: "#3182ce",
+                                                    textDecoration: "underline",
+                                                    fontWeight: "bold",
+                                                    cursor: "pointer"
+                                                },
+                                                "& a:hover": {
+                                                    color: "#2b6cb0",
+                                                }
                                             }}
                                         >
-                                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                            <ReactMarkdown
+                                                remarkPlugins={[remarkGfm]}
+                                                components={{
+                                                    a: ({ node, ...props }) => {
+                                                        const isExternal = props.href?.startsWith('http');
+                                                        return (
+                                                            <a
+                                                                {...props}
+                                                                target={isExternal ? "_blank" : undefined}
+                                                                rel={isExternal ? "noopener noreferrer" : undefined}
+                                                            />
+                                                        );
+                                                    }
+                                                }}
+                                            >
                                                 {msg.text}
                                             </ReactMarkdown>
                                         </Box>

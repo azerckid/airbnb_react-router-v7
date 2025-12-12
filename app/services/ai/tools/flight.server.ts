@@ -59,12 +59,40 @@ export async function searchFlights(
             const itinerary = offer.itineraries[0]; // Assume one-way or first leg
             const segment = itinerary.segments[0]; // First segment (direct or first leg)
 
-            // Basic carrier lookup (could be improved with dictionary)
+            // Basic carrier lookup
             const carrierCode = segment.carrierCode;
+            const carrierMap: Record<string, string> = {
+                "UO": "Hong Kong Express",
+                "KE": "Korean Air",
+                "OZ": "Asiana Airlines",
+                "7C": "Jeju Air",
+                "LJ": "Jin Air",
+                "TW": "T'way Air",
+                "RS": "Air Seoul",
+                "ZE": "Eastar Jet",
+                "BX": "Air Busan",
+                "JL": "Japan Airlines",
+                "NH": "All Nippon Airways (ANA)",
+                "CX": "Cathay Pacific",
+                "5J": "Cebu Pacific",
+                "VN": "Vietnam Airlines",
+                "VJ": "VietJet Air",
+                "PR": "Philippine Airlines",
+                "SQ": "Singapore Airlines",
+                "TR": "Scoot",
+                "TZ": "Scoot",
+                "MH": "Malaysia Airlines",
+                "AK": "AirAsia",
+                "D7": "AirAsia X",
+                "TG": "Thai Airways",
+                "CI": "China Airlines",
+                "BR": "EVA Air"
+            };
+            const airlineName = carrierMap[carrierCode] || carrierCode;
 
             return {
                 id: offer.id,
-                airline: carrierCode,
+                airline: airlineName,
                 flightNumber: `${carrierCode}${segment.number}`,
                 departure: {
                     iataCode: segment.departure.iataCode,

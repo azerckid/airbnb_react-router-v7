@@ -29,6 +29,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       { city: { contains: location } },
       { country: { contains: location } },
       { address: { contains: location } },
+      { title: { contains: location } },
     ];
   }
   if (guests) {
