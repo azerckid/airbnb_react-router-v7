@@ -156,6 +156,26 @@ export async function searchFlights(
 
     } catch (error: any) {
         console.error("❌ Amadeus API Error:", error.response ? error.response.result : error);
+        
+        // Rate limit 에러 확인
+        const errorResult = error.response?.result;
+        if (errorResult?.errors) {
+            const rateLimitError = errorResult.errors.find((e: any) => 
+                e.status === 429 || e.code === 38194 || e.title?.includes('Too many requests')
+            );
+            if (rateLimitError) {
+                return "RATE_LIMIT_ERROR: Too many requests. Please try again later.";
+            }
+            
+            // INVALID DATE 에러 확인
+            const invalidDateError = errorResult.errors.find((e: any) => 
+                e.code === 425 || e.title?.includes('INVALID DATE')
+            );
+            if (invalidDateError) {
+                return "INVALID_DATE_ERROR: Date/Time is in the past.";
+            }
+        }
+        
         return `Error searching for flights: ${error.description || "Unknown error"}`;
     }
 }

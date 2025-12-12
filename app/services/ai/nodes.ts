@@ -162,42 +162,99 @@ export async function autoRecommendationNode(state: AgentState) {
     logs.push("Phase 3: 항공편 검색 시작");
     logs.push("=".repeat(60));
 
-    // 3.1. 날짜 설정
-    const today = new Date();
-    const todayDate = today.toISOString().split('T')[0];
-    logs.push(`📅 검색 날짜: 오늘 (${todayDate}) 및 내일`);
+    // 3.1. 날짜 설정 (한국 시간대 기준)
+    // 한국 시간대(KST, UTC+9) 기준으로 오늘 날짜 계산
+    const now = new Date();
+    const koreaTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
+    const todayDate = koreaTime.toISOString().split('T')[0];
+    logs.push(`📅 검색 날짜: 오늘 (${todayDate}) 및 내일 (한국 시간 기준)`);
 
-    // 3.2. searchFirstAvailableFlight 함수 정의
+    // 3.2. searchFirstAvailableFlight 함수 정의 (Rate limiting 포함)
     async function searchFirstAvailableFlight(
         origin: string,
         destination: string,
-        todayDate: string
+        todayDate: string,
+        retryCount: number = 0
     ): Promise<FlightOffer | null> {
-        // 1. 오늘 날짜로 항공편 검색 (시간 필터 없음, 모든 항공편)
-        const todayFlights = await searchFlights(origin, destination, todayDate);
-        if (Array.isArray(todayFlights) && todayFlights.length > 0) {
-            // 출발 시간 기준 정렬 후 첫 번째 반환
-            todayFlights.sort((a, b) => {
-                return new Date(a.departure.at).getTime() - new Date(b.departure.at).getTime();
-            });
-            return todayFlights[0];
+        // Rate limiting: 각 요청 사이에 딜레이 추가 (300ms)
+        if (retryCount === 0) {
+            await new Promise(resolve => setTimeout(resolve, 300));
         }
 
-        // 2. 다음날 날짜로 검색
-        const tomorrow = new Date(todayDate);
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        const tomorrowDate = tomorrow.toISOString().split('T')[0];
+        try {
+            // 1. 오늘 날짜로 항공편 검색 (시간 필터 없음, 모든 항공편)
+            const todayResult = await searchFlights(origin, destination, todayDate);
+            
+            // 에러 체크: searchFlights가 문자열을 반환하면 에러
+            if (typeof todayResult === 'string') {
+                // Rate limit 에러 확인
+                if (todayResult.includes('RATE_LIMIT_ERROR') || todayResult.includes('rate limit') || todayResult.includes('Too many requests')) {
+                    if (retryCount < 3) {
+                        const delay = Math.pow(2, retryCount + 1) * 1000; // 2초, 4초, 8초
+                        logs.push(`   ⚠️ Rate limit 감지 (${origin} → ${destination}). ${delay / 1000}초 후 재시도... (${retryCount + 1}/3)`);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        return searchFirstAvailableFlight(origin, destination, todayDate, retryCount + 1);
+                    } else {
+                        logs.push(`   ❌ Rate limit: 재시도 횟수 초과. 이 조합은 건너뜁니다.`);
+                        return null;
+                    }
+                }
+                // INVALID DATE 에러는 무시하고 다음날 검색 시도
+                if (todayResult.includes('INVALID_DATE_ERROR')) {
+                    // 오늘 날짜가 과거이면 다음날만 검색
+                } else {
+                    // 다른 에러는 로그만 남기고 다음날 검색 시도
+                    logs.push(`   ⚠️ 오늘 날짜 검색 에러 (${origin} → ${destination}): ${todayResult.substring(0, 50)}`);
+                }
+            } else if (Array.isArray(todayResult) && todayResult.length > 0) {
+                // 출발 시간 기준 정렬 후 첫 번째 반환
+                todayResult.sort((a, b) => {
+                    return new Date(a.departure.at).getTime() - new Date(b.departure.at).getTime();
+                });
+                return todayResult[0];
+            }
 
-        const tomorrowFlights = await searchFlights(origin, destination, tomorrowDate);
-        if (Array.isArray(tomorrowFlights) && tomorrowFlights.length > 0) {
-            tomorrowFlights.sort((a, b) => {
-                return new Date(a.departure.at).getTime() - new Date(b.departure.at).getTime();
-            });
-            return tomorrowFlights[0];
+            // 2. 다음날 날짜로 검색
+            const tomorrow = new Date(todayDate);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            const tomorrowDate = tomorrow.toISOString().split('T')[0];
+
+            // Rate limiting: 다음날 검색 전에도 딜레이
+            await new Promise(resolve => setTimeout(resolve, 300));
+
+            const tomorrowResult = await searchFlights(origin, destination, tomorrowDate);
+            
+            // 에러 체크
+            if (typeof tomorrowResult === 'string') {
+                // Rate limit 에러 확인
+                if (tomorrowResult.includes('RATE_LIMIT_ERROR') || tomorrowResult.includes('rate limit') || tomorrowResult.includes('Too many requests')) {
+                    if (retryCount < 3) {
+                        const delay = Math.pow(2, retryCount + 1) * 1000;
+                        logs.push(`   ⚠️ Rate limit 감지 (${origin} → ${destination}, 내일). ${delay / 1000}초 후 재시도... (${retryCount + 1}/3)`);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        return searchFirstAvailableFlight(origin, destination, todayDate, retryCount + 1);
+                    } else {
+                        logs.push(`   ❌ Rate limit: 재시도 횟수 초과. 이 조합은 건너뜁니다.`);
+                        return null;
+                    }
+                }
+                // 다른 에러는 로그만 남기고 null 반환
+                logs.push(`   ⚠️ 내일 날짜 검색 에러 (${origin} → ${destination}): ${tomorrowResult.substring(0, 50)}`);
+                return null;
+            } else if (Array.isArray(tomorrowResult) && tomorrowResult.length > 0) {
+                tomorrowResult.sort((a, b) => {
+                    return new Date(a.departure.at).getTime() - new Date(b.departure.at).getTime();
+                });
+                return tomorrowResult[0];
+            }
+
+            // 3. 오늘과 내일 모두 없으면 null 반환
+            return null;
+        } catch (error: any) {
+            // 예상치 못한 에러
+            logs.push(`   ❌ 예상치 못한 에러 (${origin} → ${destination}): ${error.message || 'Unknown error'}`);
+            return null;
         }
-
-        // 3. 오늘과 내일 모두 없으면 null 반환
-        return null;
     }
 
     // 3.3. 각 조합에 대해 항공편 검색
