@@ -433,10 +433,78 @@ export async function autoRecommendationNode(state: AgentState) {
     logs.push("=".repeat(60));
     logs.push(`\n✅ Phase 5 완료: 숙소 검색 완료\n`);
 
-    // Phase 6에서 비용 계산을 위해 결과 반환
-    // TODO: Phase 6에서 비용 계산 및 최종 결과 생성
+    // ============================================
+    // Phase 6: 비용 계산 및 최종 결과 생성
+    // ============================================
+    logs.push("=".repeat(60));
+    logs.push("Phase 6: 비용 계산 및 최종 결과 생성");
+    logs.push("=".repeat(60));
+
+    // 6.1. 비용 계산
+    const totalRoomCost = roomCostPerNight * days;
+    const totalMeals = mealPrice * mealsPerDay * days;
+    const totalCost = Math.floor(flightCostKRW + totalRoomCost + totalMeals);
+    const isWithinBudget = totalCost <= targetBudget;
+
+    logs.push(`\n💰 최종 비용 계산:`);
+    logs.push(`   항공편 비용: ${Math.floor(flightCostKRW).toLocaleString()}원`);
+    logs.push(`   숙소 비용: ${Math.floor(roomCostPerNight).toLocaleString()}원/박 × ${days}일 = ${Math.floor(totalRoomCost).toLocaleString()}원`);
+    logs.push(`   식사 비용: ${totalMeals.toLocaleString()}원`);
+    logs.push(`   ─────────────────────────`);
+    logs.push(`   총 비용: ${totalCost.toLocaleString()}원`);
+    logs.push(`   목표 예산: ${targetBudget.toLocaleString()}원`);
+    logs.push(`   예산 대비: ${isWithinBudget ? '✅ 예산 내' : '⚠️ 예산 초과'} (${isWithinBudget ? '-' : '+'}${Math.abs(totalCost - targetBudget).toLocaleString()}원)`);
+
+    // 6.2. 최종 결과 구성
+    const finalResult = {
+        flight: bestResult.flight,
+        flightInfo: {
+            origin: bestResult.origin,
+            originName: bestResult.originName,
+            destination: bestResult.destination,
+            destinationCity: destinationCity,
+            destinationCountry: destinationCountry,
+            airline: bestResult.flight.airline,
+            flightNumber: bestResult.flight.flightNumber,
+            departureTime: new Date(bestResult.flight.departure.at),
+            arrivalTime: new Date(bestResult.flight.arrival.at),
+            searchDate: bestResult.searchDate
+        },
+        accommodation: selectedRoom,
+        costs: {
+            flight: Math.floor(flightCostKRW),
+            accommodation: Math.floor(totalRoomCost),
+            meals: totalMeals,
+            total: totalCost
+        },
+        budget: {
+            target: targetBudget,
+            actual: totalCost,
+            isWithinBudget: isWithinBudget,
+            difference: totalCost - targetBudget
+        },
+        duration: days,
+        searchStats: {
+            totalCombinations: searchResults.length,
+            foundFlights: validResults.length,
+            firstFlightFoundAt: firstFlightResult ? searchResults.findIndex(r => r.origin === firstFlightResult.origin && r.destination === firstFlightResult.destination) + 1 : null
+        }
+    };
+
+    logs.push(`\n✅ 최종 결과:`);
+    logs.push(`   항공편: ${finalResult.flightInfo.airline} ${finalResult.flightInfo.flightNumber}`);
+    logs.push(`   출발: ${finalResult.flightInfo.origin} → ${finalResult.flightInfo.destination}`);
+    logs.push(`   도착지: ${finalResult.flightInfo.destinationCity}, ${finalResult.flightInfo.destinationCountry}`);
+    logs.push(`   숙소: ${selectedRoom ? selectedRoom.title : '해당 지역의 숙소 데이터가 없습니다'}`);
+    logs.push(`   총 비용: ${totalCost.toLocaleString()}원`);
+    logs.push(`   예산: ${isWithinBudget ? '예산 내' : '예산 초과'}`);
+    logs.push("=".repeat(60));
+    logs.push(`\n✅ Phase 6 완료: 비용 계산 및 최종 결과 생성 완료\n`);
+
+    // Phase 7에서 AI 응답 생성을 위해 결과 반환
+    // TODO: Phase 7에서 finalResult를 사용하여 AI 응답 생성
     return {
-        answer: `Phase 3-5 완료: 항공편 및 숙소 검색 완료!\n\n항공편: ${bestResult.flight.airline} ${bestResult.flight.flightNumber}\n출발: ${bestResult.origin} → ${bestResult.destination}\n도착지: ${bestResult.destinationCity}, ${bestResult.destinationCountry}\n출발 시간: ${new Date(bestResult.flight.departure.at).toLocaleString('ko-KR')}\n비용: ${Math.floor(flightCostKRW).toLocaleString()}원\n\n숙소: ${selectedRoom ? selectedRoom.title : '해당 지역의 숙소 데이터가 없습니다'}\n위치: ${destinationCity}, ${destinationCountry}\n가격: ${Math.floor(roomCostPerNight).toLocaleString()}원/박\n\n다음 단계: Phase 6에서 비용 계산 예정`,
+        answer: `Phase 3-6 완료: 항공편, 숙소, 비용 계산 완료!\n\n항공편: ${finalResult.flightInfo.airline} ${finalResult.flightInfo.flightNumber}\n출발: ${finalResult.flightInfo.origin} → ${finalResult.flightInfo.destination}\n도착지: ${finalResult.flightInfo.destinationCity}, ${finalResult.flightInfo.destinationCountry}\n출발 시간: ${finalResult.flightInfo.departureTime.toLocaleString('ko-KR')}\n도착 시간: ${finalResult.flightInfo.arrivalTime.toLocaleString('ko-KR')}\n항공편 비용: ${finalResult.costs.flight.toLocaleString()}원\n\n숙소: ${selectedRoom ? selectedRoom.title : '해당 지역의 숙소 데이터가 없습니다'}\n위치: ${destinationCity}, ${destinationCountry}\n숙소 비용: ${finalResult.costs.accommodation.toLocaleString()}원 (${days}일)\n\n식사 비용: ${finalResult.costs.meals.toLocaleString()}원\n\n총 비용: ${finalResult.costs.total.toLocaleString()}원\n목표 예산: ${finalResult.budget.target.toLocaleString()}원\n예산 대비: ${isWithinBudget ? '예산 내' : '예산 초과'} (${finalResult.budget.difference > 0 ? '+' : ''}${finalResult.budget.difference.toLocaleString()}원)\n\n다음 단계: Phase 7에서 AI 응답 생성 예정`,
         foundFlights: [bestResult.flight],
         foundRooms: selectedRoom ? [selectedRoom] : [],
         logs
