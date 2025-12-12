@@ -5,6 +5,7 @@ import { type AgentState, routerNode, greeterNode, searcherNode, flightNode, eme
 const workflow = new StateGraph<any>({
     channels: {
         query: { reducer: (x: string, y: string) => y ?? x },
+        ip: { reducer: (x: string, y: string) => y ?? x },
         classification: { reducer: (x: any, y: any) => y ?? x },
         context: { reducer: (x: any, y: any) => y ?? x },
         answer: { reducer: (x: any, y: any) => y ?? x },
@@ -42,8 +43,8 @@ const workflow = new StateGraph<any>({
 export const graph = workflow.compile();
 
 // Streaming Wrapper
-export async function generateGraphResponse(query: string) {
-    const stream = await graph.stream({ query });
+export async function generateGraphResponse(query: string, ip: string = "127.0.0.1") {
+    const stream = await graph.stream({ query, ip });
 
     return new ReadableStream({
         async start(controller) {

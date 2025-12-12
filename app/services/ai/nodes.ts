@@ -66,44 +66,34 @@ Output only the category name.
 
 // --- Node 2: Emergency Departure Node ---
 export async function emergencyNode(state: AgentState) {
-    console.log("🚨 Emergency Node: Scanning immediate flights...");
-    const logs: string[] = ["🚨 Initiating Emergency Flight Scan protocol..."];
+    const logs: string[] = [];
+    logs.push("🚨 Emergency Node Activated");
 
-    // 1. Define short-haul hubs for quick getaway
-    const targets = ["NRT", "KIX", "FUK", "DAD", "BKK", "TPE"];
-    const today = new Date().toISOString().split('T')[0];
+    // 1. Detect Location & Airport
+    let originCode = "ICN"; // Default
+    let originCity = "Seoul";
 
-    // 2. Scan in parallel
-    const searchPromises = targets.map(dest => searchFlights("ICN", dest, today));
-    const results = await Promise.all(searchPromises);
+    if (state.ip) {
+        logs.push(`📍 Detecting location for IP: ${state.ip}`);
+        const location = await getIpLocation(state.ip);
 
-    const allFlights: FlightOffer[] = [];
-    results.forEach((res) => {
-        if (Array.isArray(res)) {
-            allFlights.push(...res);
+        if (location) {
+            logs.push(`📍 Detected City: ${location.city}, ${location.country}`);
+            originCity = location.city || "Unknown";
+
+            const nearestAirport = await findNearestAirport(location.lat, location.lon);
+            if (nearestAirport) {
+                originCode = nearestAirport.iataCode;
+                logs.push(`✈️ Nearest Airport: ${nearestAirport.name} (${originCode}) - ${Math.round(nearestAirport.distance)}km away`);
+            } else {
+                logs.push(`⚠️ No nearby airport found. Defaulting to ICN.`);
+            }
+        } else {
+            logs.push(`⚠️ Location lookup failed. Defaulting to ICN.`);
         }
-    });
+        Query: { query }
 
-    // 3. Filter for "Upcoming" (Simple logic: just return what API gave for today)
-    // In a real app, we would filter 'departure.at' > Now.
-    // Ensure we have some results
-    if (allFlights.length === 0) {
-        return { answer: "I checked flights to Tokyo, Osaka, Taipei, and Bangkok for today, but couldn't find any immediate seats available. You might need to check the airport directly." };
-    }
-
-    // 4. Summarize with LLM
-    const model = new ChatOpenAI({ modelName: "gpt-4o-mini", openAIApiKey: openAIKey, temperature: 0.7 });
-    const context = allFlights.slice(0, 5).map(f =>
-        `${f.airline} to ${f.arrival.iataCode}: Departs ${f.departure.at.split("T")[1]}, Price ${f.price.total} ${f.price.currency}`
-    ).join("\n");
-
-    const template = `
-User wants to leave immediately. Here are the flights departing ICN today:
-{context}
-
-Query: {query}
-
-Recommend the best options for an immediate getaway. Be urgent and exciting!
+Recommend the best options for an immediate getaway.Be urgent and exciting!
     `.trim();
 
     const response = await ChatPromptTemplate.fromTemplate(template)
@@ -113,7 +103,7 @@ Recommend the best options for an immediate getaway. Be urgent and exciting!
 
     return {
         answer: response,
-        logs: [...logs, `found ${allFlights.length} flights departing today.`]
+        logs: [...logs, `found ${ allFlights.length } flights departing today.`]
     };
 }
 
@@ -125,14 +115,14 @@ export async function budgetNode(state: AgentState) {
 
     // 1. Extract params
     const extractJson = await ChatPromptTemplate.fromTemplate(`
-    Extract params JSON: {{"budget": number, "days": number, "destination": string (or "any")}}
-    If budget given in KRW (e.g. 100만), convert to number (1000000).
-    Input: {query}
-    `).pipe(model).pipe(new StringOutputParser()).invoke({ query: state.query });
+    Extract params JSON: { { "budget": number, "days": number, "destination": string(or "any") } }
+    If budget given in KRW(e.g. 100만), convert to number(1000000).
+            Input: { query }
+        `).pipe(model).pipe(new StringOutputParser()).invoke({ query: state.query });
 
     let params = { budget: 1000000, days: 7, destination: "any" };
     try {
-        params = JSON.parse(extractJson.replace(/```json/g, "").replace(/```/g, "").trim());
+        params = JSON.parse(extractJson.replace(/```json / g, "").replace(/```/g, "").trim());
     } catch (e) { console.error("Json parse failed", e); }
 
     logs.push(`Parsed: Budget ${params.budget}, Days ${params.days}`);

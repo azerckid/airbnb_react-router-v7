@@ -65,9 +65,13 @@ export async function action({ request }: ActionFunctionArgs) {
             }
         }
 
-        console.log(`🤖 AI Request: ${message.substring(0, 50)}...`);
+        const ip = request.headers.get("x-forwarded-for") || "127.0.0.1";
+        // If multiple IPs, take the first one
+        const clientIp = ip.split(',')[0].trim();
 
-        const stream = await generateGraphResponse(message);
+        console.log(`🤖 AI Request: ${message.substring(0, 50)}... [IP: ${clientIp}]`);
+
+        const stream = await generateGraphResponse(message, clientIp);
 
         const readable = new ReadableStream({
             async start(controller) {
