@@ -39,3 +39,31 @@ export async function loader({ request }: LoaderFunctionArgs) {
         return Response.json({ conversations });
     }
 }
+
+export async function action({ request }: LoaderFunctionArgs) {
+    const user = await getUser(request);
+    if (!user) {
+        return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    if (request.method !== "DELETE") {
+        return Response.json({ error: "Method not allowed" }, { status: 405 });
+    }
+
+    const formData = await request.formData();
+    const conversationId = formData.get("conversationId") as string;
+
+    if (!conversationId) {
+        return Response.json({ error: "Conversation ID is required" }, { status: 400 });
+    }
+
+    try {
+        await prisma.aiConversation.delete({
+            where: { id: conversationId, userId: user.id }
+        });
+        return Response.json({ success: true });
+    } catch (error) {
+        console.error("Failed to delete conversation", error);
+        return Response.json({ error: "Failed to delete conversation" }, { status: 500 });
+    }
+}

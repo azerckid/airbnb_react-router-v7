@@ -37,18 +37,14 @@ export function Navigation({
                     w="full"
                 >
                     <HStack gap={1}>
-                        <Button asChild variant="ghost" colorPalette="red">
-                            <RouterLink to="/">
-                                <HStack gap={2}>
-                                    <Text fontWeight="bold" display={{ base: "none", md: "block" }}>Guest House Booking</Text>
-                                </HStack>
-                            </RouterLink>
+                        <Button asChild variant="ghost">
+                            <RouterLink to="/rooms">Rooms</RouterLink>
                         </Button>
                         <Button asChild variant="ghost">
                             <RouterLink to="/experiences">Experiences</RouterLink>
                         </Button>
                         <Button asChild variant="ghost" colorPalette="cyan">
-                            <RouterLink to="/concierge">
+                            <RouterLink to="/">
                                 <HStack gap={2}>
                                     <FaRobot />
                                     <Text>AI Concierge</Text>
@@ -185,7 +181,7 @@ export function Navigation({
                     </HStack>
                 </HStack>
             </Container>
-        </Box>
+        </Box >
     );
 }
 

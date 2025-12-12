@@ -14,7 +14,7 @@ import {
     useBreakpointValue,
     Drawer
 } from "@chakra-ui/react";
-import { FaPaperPlane, FaRobot, FaUser, FaPlus, FaHistory, FaBars } from "react-icons/fa";
+import { FaPaperPlane, FaRobot, FaUser, FaPlus, FaHistory, FaBars, FaTrash } from "react-icons/fa";
 import { motion, AnimatePresence } from "framer-motion";
 import type { MetaArgs } from "react-router";
 import { useLoaderData, Link } from "react-router";
@@ -121,6 +121,33 @@ export default function Concierge() {
             console.error("Failed to load chat", e);
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const handleDeleteChat = async (id: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!confirm("Are you sure you want to delete this conversation?")) return;
+
+        try {
+            const formData = new URLSearchParams();
+            formData.append("conversationId", id);
+
+            const res = await fetch("/api/chat_history", {
+                method: "DELETE",
+                body: formData,
+            });
+
+            if (res.ok) {
+                setHistory((prev) => prev.filter((c) => c.id !== id));
+                if (conversationId === id) {
+                    handleNewChat();
+                }
+            } else {
+                alert("Failed to delete conversation.");
+            }
+        } catch (error) {
+            console.error("Delete error:", error);
+            alert("An error occurred while deleting.");
         }
     };
 
@@ -232,25 +259,50 @@ export default function Concierge() {
             <VStack flex={1} overflowY="auto" align="stretch" gap={2} css={{ "&::-webkit-scrollbar": { display: "none" } }}>
                 <Text color="gray.600" fontSize="xs" fontWeight="bold" px={2} mt={4}>HISTORY</Text>
                 {history.map((conv) => (
-                    <Button
+                    <Box
                         key={conv.id}
-                        variant="ghost"
-                        justifyContent="flex-start"
-                        color="gray.700"
-                        _hover={{ bg: "blackAlpha.50" }}
-                        bg={conversationId === conv.id ? "blackAlpha.100" : "transparent"}
-                        onClick={() => handleSelectChat(conv.id)}
-                        h="auto"
-                        py={3}
-                        textAlign="left"
+                        position="relative"
+                        css={{
+                            "&:hover .delete-btn": { opacity: 1 }
+                        }}
                     >
-                        <VStack align="start" gap={0} w="full">
-                            <Text truncate w="full" fontSize="sm">{conv.title || "New Conversation"}</Text>
-                            <Text fontSize="2xs" color="gray.500">
-                                {new Date(conv.updatedAt).toLocaleDateString()}
-                            </Text>
-                        </VStack>
-                    </Button>
+                        <Button
+                            variant="ghost"
+                            justifyContent="flex-start"
+                            color="gray.700"
+                            _hover={{ bg: "blackAlpha.50" }}
+                            bg={conversationId === conv.id ? "blackAlpha.100" : "transparent"}
+                            onClick={() => handleSelectChat(conv.id)}
+                            h="auto"
+                            w="full"
+                            py={3}
+                            textAlign="left"
+                            pr={10}
+                        >
+                            <VStack align="start" gap={0} w="full">
+                                <Text truncate w="full" fontSize="sm">{conv.title || "New Conversation"}</Text>
+                                <Text fontSize="2xs" color="gray.500">
+                                    {new Date(conv.updatedAt).toLocaleDateString()}
+                                </Text>
+                            </VStack>
+                        </Button>
+                        <IconButton
+                            aria-label="Delete chat"
+                            size="xs"
+                            variant="ghost"
+                            colorScheme="red"
+                            className="delete-btn"
+                            position="absolute"
+                            right={2}
+                            top="50%"
+                            transform="translateY(-50%)"
+                            opacity={0}
+                            transition="opacity 0.2s"
+                            onClick={(e) => handleDeleteChat(conv.id, e)}
+                        >
+                            <FaTrash />
+                        </IconButton>
+                    </Box>
                 ))}
             </VStack>
 
@@ -397,7 +449,14 @@ export default function Concierge() {
                                     )}
                                     {msg.logs && msg.logs.length > 0 && (
                                         <Box mt={3}>
-                                            <Box as="details" bg="gray.50" rounded="md" overflow="hidden" border="1px solid" borderColor="gray.100">
+                                            <Box
+                                                as="details"
+                                                bg="gray.50"
+                                                rounded="md"
+                                                overflow="hidden"
+                                                border="1px solid"
+                                                borderColor="gray.100"
+                                            >
                                                 <Box
                                                     as="summary"
                                                     p={2}

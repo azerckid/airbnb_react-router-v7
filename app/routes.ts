@@ -9,7 +9,7 @@ export default [
     route("rooms/new", "routes/rooms.new.tsx"),
     route("rooms/:roomId", "routes/rooms.$roomId.tsx"),
     route("trips", "routes/trips.tsx"),
-    route("concierge", "routes/concierge.tsx"),
+
 
     // Host Routes
     route("host/rooms", "routes/host/rooms.tsx"),
