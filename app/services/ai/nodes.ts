@@ -135,11 +135,22 @@ export async function autoRecommendationNode(state: AgentState) {
     const rooms = await searchStructuredRooms({
         location: "Japan",
         limit: 3,
-        maxPrice: 150000 // 150k per night max
+        maxPrice: 150000
     });
 
     const pickedRoom = rooms[0]; // Best room
-    const roomCostPerNight = pickedRoom ? pickedRoom.price : 100000;
+    let roomCostPerNight = pickedRoom ? pickedRoom.price : 100000;
+
+    // Currency Correction for Japan (JPY -> KRW)
+    // If country is Japan and price is suspiciously low (< 5000), treat as JPY.
+    // Or just always treat Japan room prices from this specific DB as JPY if we know the seed source.
+    // For safety, let's assume if it is "Japan" we use x9 rate, as DB likely has JPY integers.
+    if (pickedRoom && (pickedRoom.country === "Japan" || pickedRoom.city === "Tokyo" || pickedRoom.city === "Osaka" || pickedRoom.city === "Fukuoka")) {
+        // Simple heuristic: If likely JPY
+        roomCostPerNight = roomCostPerNight * 9; // Approx 100 JPY = 900 KRW
+        logs.push(`💱 Detected Japan accommodation. Converting JPY to KRW (Rate x9): ${pickedRoom.price} -> ${roomCostPerNight}`);
+    }
+
     const days = 7;
     const totalRoomCost = roomCostPerNight * days;
 

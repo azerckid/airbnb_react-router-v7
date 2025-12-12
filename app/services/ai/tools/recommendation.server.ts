@@ -14,6 +14,7 @@ export interface RoomListing {
     city: string;
     category?: string;
     images?: string[];
+    country?: string;
 }
 
 export async function searchStructuredRooms(params: RoomSearchParams): Promise<RoomListing[]> {
@@ -64,7 +65,8 @@ export async function searchStructuredRooms(params: RoomSearchParams): Promise<R
             title: r.title,
             price: r.price,
             city: r.city || "Unknown City",
-            category: r.category?.name
+            category: r.category?.name,
+            country: r.country || "Unknown Country"
         }));
 
     } catch (e) {
