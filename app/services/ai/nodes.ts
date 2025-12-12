@@ -290,7 +290,7 @@ export async function autoRecommendationNode(state: AgentState) {
 
     // 4.1. 항공편이 있는 결과만 필터링
     const validResults = searchResults.filter(result => result.flight !== null);
-    
+
     if (validResults.length === 0) {
         logs.push(`\n⚠️ 모든 조합에서 항공편을 찾을 수 없었습니다.`);
         logs.push("=".repeat(60));
@@ -354,12 +354,91 @@ export async function autoRecommendationNode(state: AgentState) {
         logs.push(`   최종 선택된 항공편과 비교하여 더 빠른 항공편이 선택되었습니다.`);
     }
 
-    // Phase 5에서 숙소 검색을 위해 결과 반환
-    // TODO: Phase 5에서 bestResult를 사용하여 숙소 검색
+    // ============================================
+    // Phase 5: 숙소 검색
+    // ============================================
+    logs.push("\n" + "=".repeat(60));
+    logs.push("Phase 5: 숙소 검색");
+    logs.push("=".repeat(60));
+
+    // 5.1. 목적지 정보 추출
+    const destinationCountry = bestResult.destinationCountry;
+    const destinationCity = bestResult.destinationCity;
+    logs.push(`\n📍 목적지 정보:`);
+    logs.push(`   국가: ${destinationCountry}`);
+    logs.push(`   도시: ${destinationCity}`);
+    logs.push(`   공항: ${bestResult.destination}`);
+
+    // 5.2. 예산 계산
+    const targetBudget = 1000000; // 100만원 예산
+    const days = 6; // Travel duration: 5-7 days (use 6 days as average)
+    const mealPrice = 15000;
+    const mealsPerDay = 3;
+
+    const flightCost = parseFloat(bestResult.flight.price.total);
+    // Currency conversion if needed (assuming KRW, but check)
+    let flightCostKRW = flightCost;
+    if (bestResult.flight.price.currency !== "KRW") {
+        flightCostKRW = flightCost * 1450; // Approximate conversion
+        logs.push(`   💱 항공편 비용 환전: ${flightCost} ${bestResult.flight.price.currency} → ${Math.floor(flightCostKRW).toLocaleString()}원`);
+    }
+
+    const estimatedMealCost = days * mealsPerDay * mealPrice; // 270,000 for 6 days
+    const remainingBudgetForRoom = targetBudget - flightCostKRW - estimatedMealCost;
+    const maxPricePerNight = Math.floor(remainingBudgetForRoom / days);
+
+    logs.push(`\n💰 예산 계산:`);
+    logs.push(`   총 예산: ${targetBudget.toLocaleString()}원`);
+    logs.push(`   여행 기간: ${days}일`);
+    logs.push(`   항공편 비용: ${Math.floor(flightCostKRW).toLocaleString()}원`);
+    logs.push(`   식사 비용 (${days}일 × ${mealsPerDay}끼 × ${mealPrice.toLocaleString()}원): ${estimatedMealCost.toLocaleString()}원`);
+    logs.push(`   숙소 예산 (남은 금액): ${remainingBudgetForRoom.toLocaleString()}원`);
+    logs.push(`   숙소 1박 최대 가격: ${maxPricePerNight.toLocaleString()}원`);
+
+    // 5.3. 숙소 검색
+    logs.push(`\n🏨 숙소 검색 중...`);
+    logs.push(`   검색 위치: ${destinationCountry}`);
+    logs.push(`   최대 가격: ${maxPricePerNight.toLocaleString()}원/박`);
+
+    const rooms = await searchStructuredRooms({
+        location: destinationCountry,
+        maxPrice: Math.max(maxPricePerNight, 50000), // Minimum 50,000 to ensure some results
+        limit: 3
+    });
+
+    logs.push(`   검색 결과: ${rooms.length}개 숙소 발견`);
+
+    // 5.4. 숙소 선택
+    const selectedRoom = rooms[0]; // 첫 번째 숙소 선택
+    let roomCostPerNight = selectedRoom ? selectedRoom.price : 100000; // Default if no room found
+
+    // Currency Correction for Japan (JPY -> KRW)
+    if (selectedRoom && (selectedRoom.country === "Japan" || selectedRoom.city === "Tokyo" || selectedRoom.city === "Osaka" || selectedRoom.city === "Fukuoka" || selectedRoom.city === "Fukuoka-City" || selectedRoom.city === "Hiroshima" || selectedRoom.city === "Kyoto")) {
+        // Simple heuristic: If likely JPY
+        roomCostPerNight = roomCostPerNight * 9; // Approx 100 JPY = 900 KRW
+        logs.push(`   💱 일본 숙소 가격 환전: ${selectedRoom.price} → ${Math.floor(roomCostPerNight).toLocaleString()}원 (JPY → KRW)`);
+    }
+
+    if (selectedRoom) {
+        logs.push(`\n✅ 선택된 숙소:`);
+        logs.push(`   이름: ${selectedRoom.title}`);
+        logs.push(`   위치: ${selectedRoom.city}, ${selectedRoom.country}`);
+        logs.push(`   가격: ${Math.floor(roomCostPerNight).toLocaleString()}원/박`);
+        logs.push(`   ID: ${selectedRoom.id}`);
+    } else {
+        logs.push(`\n⚠️ 숙소를 찾을 수 없었습니다.`);
+        logs.push(`   기본 추정 가격 사용: ${roomCostPerNight.toLocaleString()}원/박`);
+    }
+
+    logs.push("=".repeat(60));
+    logs.push(`\n✅ Phase 5 완료: 숙소 검색 완료\n`);
+
+    // Phase 6에서 비용 계산을 위해 결과 반환
+    // TODO: Phase 6에서 비용 계산 및 최종 결과 생성
     return {
-        answer: `Phase 3-4 완료: 가장 빠른 출발 항공편을 선택했습니다!\n\n항공편: ${bestResult.flight.airline} ${bestResult.flight.flightNumber}\n출발: ${bestResult.origin} → ${bestResult.destination}\n도착지: ${bestResult.destinationCity}, ${bestResult.destinationCountry}\n출발 시간: ${new Date(bestResult.flight.departure.at).toLocaleString('ko-KR')}\n도착 시간: ${new Date(bestResult.flight.arrival.at).toLocaleString('ko-KR')}\n비용: ${bestResult.flight.price.total} ${bestResult.flight.price.currency}\n\n총 ${searchResults.length}개 조합 중 ${validResults.length}개에서 항공편 발견\n가장 빠른 출발 항공편 선택 완료\n\n다음 단계: Phase 5에서 숙소 검색 예정`,
+        answer: `Phase 3-5 완료: 항공편 및 숙소 검색 완료!\n\n항공편: ${bestResult.flight.airline} ${bestResult.flight.flightNumber}\n출발: ${bestResult.origin} → ${bestResult.destination}\n도착지: ${bestResult.destinationCity}, ${bestResult.destinationCountry}\n출발 시간: ${new Date(bestResult.flight.departure.at).toLocaleString('ko-KR')}\n비용: ${Math.floor(flightCostKRW).toLocaleString()}원\n\n숙소: ${selectedRoom ? selectedRoom.title : '해당 지역의 숙소 데이터가 없습니다'}\n위치: ${destinationCity}, ${destinationCountry}\n가격: ${Math.floor(roomCostPerNight).toLocaleString()}원/박\n\n다음 단계: Phase 6에서 비용 계산 예정`,
         foundFlights: [bestResult.flight],
-        foundRooms: [],
+        foundRooms: selectedRoom ? [selectedRoom] : [],
         logs
     };
 
