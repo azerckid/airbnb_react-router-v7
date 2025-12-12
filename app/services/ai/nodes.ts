@@ -182,12 +182,12 @@ export async function autoRecommendationNode(state: AgentState) {
             });
             return todayFlights[0];
         }
-        
+
         // 2. 다음날 날짜로 검색
         const tomorrow = new Date(todayDate);
         tomorrow.setDate(tomorrow.getDate() + 1);
         const tomorrowDate = tomorrow.toISOString().split('T')[0];
-        
+
         const tomorrowFlights = await searchFlights(origin, destination, tomorrowDate);
         if (Array.isArray(tomorrowFlights) && tomorrowFlights.length > 0) {
             tomorrowFlights.sort((a, b) => {
@@ -195,7 +195,7 @@ export async function autoRecommendationNode(state: AgentState) {
             });
             return tomorrowFlights[0];
         }
-        
+
         // 3. 오늘과 내일 모두 없으면 null 반환
         return null;
     }
@@ -221,7 +221,7 @@ export async function autoRecommendationNode(state: AgentState) {
 
     for (const combo of searchCombinations) {
         searchedCount++;
-        
+
         // 진행 상황 로깅 (10개마다)
         if (searchedCount % 10 === 0 || searchedCount === 1) {
             logs.push(`   진행: ${searchedCount}/${searchCombinations.length} (${Math.round(searchedCount / searchCombinations.length * 100)}%)`);
@@ -281,35 +281,84 @@ export async function autoRecommendationNode(state: AgentState) {
     logs.push(`   항공편 없음: ${searchResults.length - foundFlightsCount}개 조합`);
     logs.push("=".repeat(60));
 
-    // 3.4. 첫 항공편 발견 시 즉시 반환 (스트리밍용)
-    // TODO: Phase 5-7에서 숙소 검색 및 AI 응답 생성
-    if (firstFlightResult && firstFlightResult.flight) {
-        logs.push(`\n⚡ 첫 항공편 발견 - 즉시 응답 준비`);
-        // Phase 5-7에서 처리할 예정이므로, 일단 첫 결과만 반환
-        return {
-            answer: `Phase 3 완료: 첫 번째 항공편을 찾았습니다!\n\n항공편: ${firstFlightResult.flight.airline} ${firstFlightResult.flight.flightNumber}\n출발: ${firstFlightResult.origin} → ${firstFlightResult.destination}\n도착지: ${firstFlightResult.destinationCity}, ${firstFlightResult.destinationCountry}\n출발 시간: ${new Date(firstFlightResult.flight.departure.at).toLocaleString('ko-KR')}\n비용: ${firstFlightResult.flight.price.total} ${firstFlightResult.flight.price.currency}\n\n총 ${searchResults.length}개 조합 중 ${foundFlightsCount}개에서 항공편 발견\n\n다음 단계: Phase 5에서 숙소 검색 예정`,
-            foundFlights: [firstFlightResult.flight],
-            foundRooms: [],
-            logs
-        };
-    }
+    // ============================================
+    // Phase 4: 항공편 결과 정렬 및 선택
+    // ============================================
+    logs.push("\n" + "=".repeat(60));
+    logs.push("Phase 4: 항공편 결과 정렬 및 선택");
+    logs.push("=".repeat(60));
 
-    // 항공편이 하나도 없는 경우
-    if (foundFlightsCount === 0) {
+    // 4.1. 항공편이 있는 결과만 필터링
+    const validResults = searchResults.filter(result => result.flight !== null);
+    
+    if (validResults.length === 0) {
         logs.push(`\n⚠️ 모든 조합에서 항공편을 찾을 수 없었습니다.`);
+        logs.push("=".repeat(60));
         return {
-            answer: `Phase 3 완료: ${searchResults.length}개 조합을 모두 검색했으나, 당장 출발 가능한 항공편을 찾을 수 없었습니다.\n\n검색 범위: 오늘 날짜 및 내일 날짜\n결과: 항공편 없음\n\n다른 날짜나 목적지로 검색해보시거나, 나중에 다시 시도해보시기 바랍니다.`,
+            answer: `Phase 3-4 완료: ${searchResults.length}개 조합을 모두 검색했으나, 당장 출발 가능한 항공편을 찾을 수 없었습니다.\n\n검색 범위: 오늘 날짜 및 내일 날짜\n결과: 항공편 없음\n\n다른 날짜나 목적지로 검색해보시거나, 나중에 다시 시도해보시기 바랍니다.`,
             foundFlights: [],
             foundRooms: [],
             logs
         };
     }
 
-    // 여러 항공편이 발견된 경우 (정렬 필요 - Phase 4에서 처리)
-    logs.push(`\n📊 ${foundFlightsCount}개 항공편 발견 - Phase 4에서 정렬 및 선택 예정`);
+    logs.push(`\n📊 ${validResults.length}개 유효한 항공편 결과 발견`);
+
+    // 4.2. 출발 시간 기준 오름차순 정렬
+    logs.push(`\n🔄 출발 시간 기준 정렬 중...`);
+    const sortedResults = validResults.sort((a, b) => {
+        if (!a.flight || !b.flight) return 0;
+        const timeA = new Date(a.flight.departure.at).getTime();
+        const timeB = new Date(b.flight.departure.at).getTime();
+        return timeA - timeB;
+    });
+
+    // 정렬된 결과 상위 5개 로깅
+    logs.push(`   정렬 완료 - 상위 5개 항공편:`);
+    sortedResults.slice(0, 5).forEach((result, idx) => {
+        if (result.flight) {
+            const depTime = new Date(result.flight.departure.at).toLocaleString('ko-KR');
+            logs.push(`   ${idx + 1}. ${result.origin} → ${result.destination} (${result.destinationCity})`);
+            logs.push(`      ${result.flight.airline} ${result.flight.flightNumber} - 출발: ${depTime}`);
+            logs.push(`      비용: ${result.flight.price.total} ${result.flight.price.currency}`);
+        }
+    });
+
+    // 4.3. 가장 빠른 출발 항공편 선택
+    const bestResult = sortedResults[0];
+    if (!bestResult || !bestResult.flight) {
+        logs.push(`\n⚠️ 정렬 후에도 유효한 항공편을 찾을 수 없습니다.`);
+        logs.push("=".repeat(60));
+        return {
+            answer: `Phase 4 완료: 항공편을 찾을 수 없었습니다.`,
+            foundFlights: [],
+            foundRooms: [],
+            logs
+        };
+    }
+
+    logs.push(`\n✅ 최종 선택된 항공편:`);
+    logs.push(`   출발지: ${bestResult.origin} (${bestResult.originName})`);
+    logs.push(`   목적지: ${bestResult.destination} (${bestResult.destinationCity}, ${bestResult.destinationCountry})`);
+    logs.push(`   항공편: ${bestResult.flight.airline} ${bestResult.flight.flightNumber}`);
+    logs.push(`   출발 시간: ${new Date(bestResult.flight.departure.at).toLocaleString('ko-KR')}`);
+    logs.push(`   도착 시간: ${new Date(bestResult.flight.arrival.at).toLocaleString('ko-KR')}`);
+    logs.push(`   비용: ${bestResult.flight.price.total} ${bestResult.flight.price.currency}`);
+    logs.push(`   검색 날짜: ${bestResult.searchDate || 'N/A'}`);
+    logs.push("=".repeat(60));
+    logs.push(`\n✅ Phase 4 완료: 가장 빠른 출발 항공편 선택 완료\n`);
+
+    // 4.4. 첫 항공편 발견 정보 (스트리밍용)
+    if (firstFlightResult && firstFlightResult.flight) {
+        logs.push(`⚡ 참고: 첫 항공편은 ${firstFlightResult.origin} → ${firstFlightResult.destination}에서 발견되었습니다.`);
+        logs.push(`   최종 선택된 항공편과 비교하여 더 빠른 항공편이 선택되었습니다.`);
+    }
+
+    // Phase 5에서 숙소 검색을 위해 결과 반환
+    // TODO: Phase 5에서 bestResult를 사용하여 숙소 검색
     return {
-        answer: `Phase 3 완료: ${foundFlightsCount}개 항공편을 찾았습니다.\n\n총 ${searchResults.length}개 조합 검색 완료\n항공편 발견: ${foundFlightsCount}개\n\n다음 단계: Phase 4에서 가장 빠른 출발 항공편 선택 예정`,
-        foundFlights: searchResults.filter(r => r.flight !== null).map(r => r.flight!),
+        answer: `Phase 3-4 완료: 가장 빠른 출발 항공편을 선택했습니다!\n\n항공편: ${bestResult.flight.airline} ${bestResult.flight.flightNumber}\n출발: ${bestResult.origin} → ${bestResult.destination}\n도착지: ${bestResult.destinationCity}, ${bestResult.destinationCountry}\n출발 시간: ${new Date(bestResult.flight.departure.at).toLocaleString('ko-KR')}\n도착 시간: ${new Date(bestResult.flight.arrival.at).toLocaleString('ko-KR')}\n비용: ${bestResult.flight.price.total} ${bestResult.flight.price.currency}\n\n총 ${searchResults.length}개 조합 중 ${validResults.length}개에서 항공편 발견\n가장 빠른 출발 항공편 선택 완료\n\n다음 단계: Phase 5에서 숙소 검색 예정`,
+        foundFlights: [bestResult.flight],
         foundRooms: [],
         logs
     };
