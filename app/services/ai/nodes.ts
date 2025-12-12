@@ -176,35 +176,18 @@ export async function autoRecommendationNode(state: AgentState) {
     logs.push(`✅ Total: ${validFlights.length} flights found within ${hoursFromNow} hours from ${airports.length} airport(s)`);
 
     let bestFlight = validFlights[0];
-    let flightCost = 300000; // Default estimate
-
-    // Fallback Mock if no flight found (For consistent Demo UX)
-    if (!bestFlight) {
-        logs.push("⚠️ No flights found within 6 hours, using Mock Flight for demo.");
-        const mockDepartureTime = new Date(now.getTime() + 2 * 60 * 60 * 1000); // 2 hours from now
-        bestFlight = {
-            id: "mock-flight",
-            airline: "Skyscanner Best Value",
-            flightNumber: "SK001",
-            departure: {
-                iataCode: originCode,
-                at: mockDepartureTime.toISOString()
-            },
-            arrival: {
-                iataCode: dest,
-                at: new Date(mockDepartureTime.getTime() + 2 * 60 * 60 * 1000).toISOString()
-            },
-            duration: "2H",
-            price: { currency: "KRW", total: "300000" }
-        } as any;
-    }
+    let flightCost = 0;
+    const hasFlights = validFlights.length > 0;
 
     if (bestFlight) {
         flightCost = parseFloat(bestFlight.price.total);
         if (bestFlight.price.currency !== "KRW") flightCost *= 1450;
+    } else {
+        logs.push("⚠️ No flights found within 6 hours. User will be informed and alternative options will be suggested.");
     }
 
     // 4. Get destination location from arrival airport
+    // If no flight found, use default destination for location search
     const arrivalAirportCode = bestFlight ? bestFlight.arrival.iataCode : dest;
     logs.push(`📍 Getting location info for destination airport: ${arrivalAirportCode}`);
 
@@ -248,27 +231,35 @@ export async function autoRecommendationNode(state: AgentState) {
     const mealPrice = 15000;
     const mealsPerDay = 3;
     const totalMeals = mealPrice * mealsPerDay * days;
-    const totalCost = Math.floor(flightCost + totalRoomCost + totalMeals);
+    // Only include flight cost if flight is available
+    const totalCost = hasFlights ? Math.floor(flightCost + totalRoomCost + totalMeals) : Math.floor(totalRoomCost + totalMeals);
     const targetBudget = 1000000;
 
-    // Generate Flight Link (Skyscanner: origin/dest/YYMMDD)
+    // Generate Flight Links (Skyscanner: origin/dest/YYMMDD)
     // flightDate is YYYY-MM-DD -> YYMMDD
     const dateShort = flightDate.slice(2).replace(/-/g, '');
     const flightLink = `https://www.skyscanner.co.kr/transport/flights/${originCode.toLowerCase()}/${dest.toLowerCase()}/${dateShort}`;
 
+    // Generate link for next day as alternative
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowDate = tomorrow.toISOString().split('T')[0];
+    const tomorrowDateShort = tomorrowDate.slice(2).replace(/-/g, '');
+    const nextDayFlightLink = `https://www.skyscanner.co.kr/transport/flights/${originCode.toLowerCase()}/${dest.toLowerCase()}/${tomorrowDateShort}`;
+
     // Format departure time for display
-    const departureTime = bestFlight ? new Date(bestFlight.departure.at) : new Date();
-    const departureTimeStr = departureTime.toLocaleTimeString('ko-KR', {
+    const departureTime = bestFlight ? new Date(bestFlight.departure.at) : null;
+    const departureTimeStr = departureTime ? departureTime.toLocaleTimeString('ko-KR', {
         hour: '2-digit',
         minute: '2-digit',
         hour12: false
-    });
-    const arrivalTime = bestFlight ? new Date(bestFlight.arrival.at) : new Date();
-    const arrivalTimeStr = arrivalTime.toLocaleTimeString('ko-KR', {
+    }) : "N/A";
+    const arrivalTime = bestFlight ? new Date(bestFlight.arrival.at) : null;
+    const arrivalTimeStr = arrivalTime ? arrivalTime.toLocaleTimeString('ko-KR', {
         hour: '2-digit',
         minute: '2-digit',
         hour12: false
-    });
+    }) : "N/A";
 
     const context = `
     User Location: ${originCity}
@@ -280,11 +271,19 @@ export async function autoRecommendationNode(state: AgentState) {
     Destination Country: ${destinationLocation?.country || 'Unknown'}
     Client Time: ${clientTime}
     Search Criteria: Flights departing within ${hoursFromNow} hours from now
+    Search Date: ${flightDate}
     
-    Flight: ${bestFlight ? `${bestFlight.airline} ${bestFlight.flightNumber} (Departure: ${departureTimeStr}, Arrival: ${arrivalTimeStr})` : "Estimated Flight (Check availability)"}
+    Flight Found: ${hasFlights ? 'Yes' : 'No'}
+    ${hasFlights ? `
+    Flight: ${bestFlight.airline} ${bestFlight.flightNumber} (Departure: ${departureTimeStr}, Arrival: ${arrivalTimeStr})
     Flight Cost: ${Math.floor(flightCost)} KRW
     Flight Link: ${flightLink}
     Available Flights: ${validFlights.length} flights found within ${hoursFromNow} hours
+    ` : `
+    No flights found within ${hoursFromNow} hours from now.
+    Alternative: Search for flights tomorrow (${tomorrowDate})
+    Next Day Flight Link: ${nextDayFlightLink}
+    `}
     
     Accommodation Search Location: ${searchLocation}
     Accommodation: ${pickedRoom ? pickedRoom.title : "Standard Hotel"} (${pickedRoom ? pickedRoom.city : "City"}, ${pickedRoom ? pickedRoom.country : "Country"})
@@ -293,7 +292,12 @@ export async function autoRecommendationNode(state: AgentState) {
     
     Meal Plan: ${mealPrice} KRW/meal * 3 meals * ${days} days = ${totalMeals} KRW
     
-    Total Estimated Cost: ${totalCost} KRW
+    ${hasFlights ? `
+    Total Estimated Cost: Flight ${Math.floor(flightCost)} KRW + Accommodation ${Math.floor(totalRoomCost)} KRW + Meals ${totalMeals} KRW = ${totalCost} KRW
+    ` : `
+    Estimated Cost (without flight): Accommodation ${Math.floor(totalRoomCost)} KRW + Meals ${totalMeals} KRW = ${totalCost} KRW
+    Note: Flight cost not included as no flights available today.
+    `}
     Target Budget: ${targetBudget} KRW
     `;
 
@@ -309,25 +313,48 @@ export async function autoRecommendationNode(state: AgentState) {
 
         2. Plan Details (Narrative):
         - Start by mentioning the user's location and nearby airports.
+        
+        ${hasFlights ? `
         - **Present the Flight**: Emphasize that this flight departs within ${hoursFromNow} hours from now.
           Describe the flight Option (Airline, Flight Number, Departure Time, Arrival Time, Cost) smoothly.
-          (Example: "인천공항에서 ${departureTimeStr}에 출발하여 ${arrivalTimeStr}에 도착하는 ${bestFlight?.airline || '항공편'}이 ${hoursFromNow}시간 내 출발 가능한 최적의 옵션으로 검색되었습니다.")
+          (Example: "인천공항에서 ${departureTimeStr}에 출발하여 ${arrivalTimeStr}에 도착하는 ${bestFlight.airline}이 ${hoursFromNow}시간 내 출발 가능한 최적의 옵션으로 검색되었습니다.")
           (CRITICAL: You MUST make the text "[Airline Name] ([Departure Time])" a clickable Markdown link using the [Flight Link] from context.
-           Example: [${bestFlight?.airline || '항공편'} (${departureTimeStr})](${flightLink})
+           Example: [${bestFlight.airline} (${departureTimeStr})](${flightLink})
            IMPORTANT: The URL in parentheses MUST NOT contain any spaces. Write it as a single continuous string without spaces.)
           - Mention if multiple airports were searched and how many flights were found.
-        - **Present the Accommodation**: Recommend the hotel in the destination city.
+        ` : `
+        - **Flight Availability**: Clearly inform the user that NO flights were found within ${hoursFromNow} hours from now.
+          Say: "죄송하지만, 현재 시각으로부터 ${hoursFromNow}시간 이내에 출발하는 항공편을 찾을 수 없었습니다."
+          - Provide alternative options:
+            1. Suggest searching for flights tomorrow: "내일 출발하는 항공편을 검색해보시는 것을 추천드립니다."
+            2. Include a link to search for next day flights: [내일 항공편 검색하기](${nextDayFlightLink})
+            3. Suggest expanding the search time window: "또는 더 넓은 시간 범위로 검색해보시기 바랍니다."
+          - Be honest and helpful, do NOT make up flight information.
+        `}
+        
+        - **Present the Accommodation**: Recommend the hotel in the destination city (if available).
           (CRITICAL: STRICTLY format the Room link as: [RoomTitle](/rooms/${pickedRoom ? pickedRoom.id : ""}). 
            IMPORTANT: Do NOT add spaces inside the link syntax. The URL path must be continuous without spaces.
            Example: [아사쿠사 호스텔 도카이소](/rooms/cmivvx0g7000qt6h775oqytji) - NO spaces in the URL part.)
+        
+        ${hasFlights ? `
         - **Cost & Summary**: Briefly mention the meal costs and the total estimated trip budget compared to the target.
           Emphasize that this is a "지금 당장 출발 가능한" (can depart right now) trip option.
+        ` : `
+        - **Alternative Planning**: Since no immediate flights are available, suggest:
+          1. Planning for tomorrow or later dates
+          2. Checking accommodation availability for future dates
+          3. Being flexible with travel dates for better options
+        `}
         
         Context Data:
         {context}
         
         Tone: Polite, Professional (honorifics), and Concierge-like.
-        IMPORTANT: Do NOT output brackets like [Flight Info] literally. Replace them with the actual data from Context.
+        IMPORTANT: 
+        - Do NOT output brackets like [Flight Info] literally. Replace them with the actual data from Context.
+        - If "Flight Found: No" in context, DO NOT create fake flight information. Be honest about the unavailability.
+        - Always provide helpful alternatives when flights are not available.
         `],
         ["human", "Recommend the trip now."]
     ]);
