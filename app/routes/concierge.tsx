@@ -248,7 +248,7 @@ export default function Concierge() {
 
             const prompt = `
 Please generate a welcome message with the following specific introduction in Korean:
-"안녕하세요, 지금 당장 출발할 수 있는 여행은 아래와 같습니다. (일단은 서울에 산다고 가정/ 추후에 수정) 현재 시각 ${timeString}입니다, 인천공항을 출발해서 여행 하실 수 있는 여행은 아래와 같습니다."
+"안녕하세요, 현재 시각 ${timeString}입니다. 고객님께서 바로 떠나실 수 있는 추천 여행지를 찾았습니다."
 
 Then, immediately perform these two checks and present the results:
 1. EMERGENCY: Check for flights departing from ICN to popular nearby destinations (NRT, KIX, FUK, DAD, BKK, TPE) departing TODAY (within next 4 hours).
