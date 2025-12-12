@@ -153,43 +153,136 @@ export async function autoRecommendationNode(state: AgentState) {
     const availableLocations = await getAvailableLocations();
     logs.push(`   ✓ Found ${availableLocations.length} countries with accommodation data`);
 
+    // Log all available countries for debugging
+    if (availableLocations.length > 0) {
+        logs.push(`   Available countries: ${availableLocations.map(l => `${l.country} (${l.cities.length} cities)`).join(', ')}`);
+    }
+
     if (availableLocations.length === 0) {
         logs.push("⚠️ No accommodation data found. Using default destination.");
         // Fallback to default
         availableLocations.push({ country: "Japan", cities: ["Fukuoka", "Tokyo", "Osaka"] });
     }
 
-    // Get airport codes for available destinations
+    // Get airport codes ONLY for destinations that have accommodation data
+    // CRITICAL: Only process countries that are in availableLocations (have accommodation data in DB)
     const destinationOptions: Array<{ country: string; city: string; airportCode: string }> = [];
 
+    logs.push(`   Processing ${availableLocations.length} countries with accommodation data...`);
+
+    // Create a set of available country names for quick lookup (case-insensitive)
+    const availableCountrySet = new Set(availableLocations.map(l => l.country.toLowerCase()));
+
     for (const location of availableLocations) {
-        for (const city of location.cities) {
-            // Try to get airport code for this city/country
-            // For now, we'll use a simple mapping or search
-            // Priority: Use country-level airport codes
-            const airportInfo = await getAirportLocationByCountry(location.country);
-            if (airportInfo && airportInfo.iataCode) {
+        logs.push(`   Checking: ${location.country} (${location.cities.length} cities)`);
+
+        // CRITICAL: Only use countries that are in availableLocations (have accommodation data)
+        // Verify this country is in our available locations list
+        if (!availableCountrySet.has(location.country.toLowerCase())) {
+            logs.push(`   ✗ ${location.country}: Not in available locations list, skipping`);
+            continue;
+        }
+
+        // Try to get airport code for this country
+        const airportInfo = await getAirportLocationByCountry(location.country);
+        if (airportInfo && airportInfo.iataCode) {
+            // Verify the airport country matches our available location
+            const airportCountry = airportInfo.country || location.country;
+            if (!availableCountrySet.has(airportCountry.toLowerCase())) {
+                logs.push(`   ⚠️ ${location.country}: Airport country (${airportCountry}) doesn't match available location, skipping`);
+                continue;
+            }
+
+            // Add all cities from this country
+            for (const city of location.cities) {
                 destinationOptions.push({
-                    country: location.country,
+                    country: location.country, // Use original country name from DB
                     city: city,
                     airportCode: airportInfo.iataCode
                 });
-                logs.push(`   ✓ ${city}, ${location.country}: ${airportInfo.iataCode}`);
             }
+            logs.push(`   ✓ ${location.country}: ${airportInfo.iataCode} (${location.cities.length} cities)`);
+        } else {
+            logs.push(`   ✗ ${location.country}: Could not find airport code`);
         }
     }
 
-    // Remove duplicates by airport code
-    const uniqueDestinations = Array.from(
+    // Remove duplicates by airport code (keep first occurrence)
+    let uniqueDestinations = Array.from(
         new Map(destinationOptions.map(d => [d.airportCode, d])).values()
     );
 
+    // CRITICAL: Final verification - Only use destinations that are in availableLocations
+    // availableLocations is already from DB, so we trust it as the source of truth
+    // ALSO: Exclude domestic flights (Korea to Korea)
+    logs.push(`🔍 Final verification: Filtering destinations to only those with accommodation data...`);
+    const verifiedDestinations: Array<{ country: string; city: string; airportCode: string }> = [];
+
+    // Create a map of available countries (case-insensitive) for quick lookup
+    const availableCountryMap = new Map<string, string>();
+    availableLocations.forEach(loc => {
+        availableCountryMap.set(loc.country.toLowerCase(), loc.country); // Store original case
+    });
+
+    // Korean airport codes (domestic flights should be excluded)
+    const koreanAirports = new Set(["ICN", "GMP", "PUS", "CJU", "TAE", "KUV", "USN", "RSU"]);
+
+    for (const dest of uniqueDestinations) {
+        // Exclude domestic flights (Korea to Korea)
+        if (koreanAirports.has(dest.airportCode)) {
+            logs.push(`   ✗ ${dest.country} (${dest.airportCode}): Korean airport - EXCLUDED (domestic flight)`);
+            continue;
+        }
+
+        const destCountryLower = dest.country.toLowerCase();
+        const matchedAvailableCountry = availableCountryMap.get(destCountryLower);
+
+        if (matchedAvailableCountry) {
+            // Exclude if destination country is Korea (domestic flight)
+            const isKorea = matchedAvailableCountry.toLowerCase() === "south korea" ||
+                matchedAvailableCountry.toLowerCase() === "korea" ||
+                matchedAvailableCountry.toLowerCase() === "대한민국";
+            if (isKorea) {
+                logs.push(`   ✗ ${matchedAvailableCountry} (${dest.airportCode}): Korea - EXCLUDED (domestic flight)`);
+                continue;
+            }
+
+            // This destination's country is in availableLocations (has accommodation data)
+            // Use the original country name from availableLocations to ensure exact match
+            verifiedDestinations.push({
+                country: matchedAvailableCountry, // Use exact name from DB
+                city: dest.city,
+                airportCode: dest.airportCode
+            });
+            logs.push(`   ✓ ${matchedAvailableCountry} (${dest.airportCode}): Verified - has accommodation data in DB (international)`);
+        } else {
+            logs.push(`   ✗ ${dest.country} (${dest.airportCode}): NOT in availableLocations, REMOVING from destinations`);
+            logs.push(`      Available countries: ${Array.from(availableCountryMap.values()).join(', ')}`);
+        }
+    }
+
+    uniqueDestinations = verifiedDestinations;
+
     if (uniqueDestinations.length === 0) {
-        logs.push("⚠️ Could not determine destination airports. Using default: FUK");
+        logs.push("⚠️ No destinations with accommodation data found. Using default: FUK (Japan)");
         uniqueDestinations.push({ country: "Japan", city: "Fukuoka", airportCode: "FUK" });
     }
 
-    logs.push(`🎯 Will search flights to ${uniqueDestinations.length} destination(s): ${uniqueDestinations.map(d => `${d.city} (${d.airportCode})`).join(', ')}`);
+    logs.push(`🎯 Final verified destinations (with accommodation data): ${uniqueDestinations.length} destination(s)`);
+    uniqueDestinations.forEach((dest, idx) => {
+        logs.push(`   ${idx + 1}. ${dest.city}, ${dest.country} (${dest.airportCode})`);
+    });
+
+    // Final verification log
+    const destinationCountries = new Set(uniqueDestinations.map(d => d.country.toLowerCase()));
+    const availableCountries = new Set(availableLocations.map(l => l.country.toLowerCase()));
+    const missingCountries = Array.from(destinationCountries).filter(c => !availableCountries.has(c));
+    if (missingCountries.length > 0) {
+        logs.push(`   ⚠️ CRITICAL ERROR: Some destinations don't have accommodation data: ${missingCountries.join(', ')}`);
+        logs.push(`   Available countries: ${Array.from(availableCountries).join(', ')}`);
+    } else {
+        logs.push(`   ✓ Final verification passed: All ${uniqueDestinations.length} destinations have accommodation data`);
+    }
 
     // 3. Flight Search - Sequential search: 6h -> 24h -> next day
     const today = new Date();
@@ -401,9 +494,23 @@ export async function autoRecommendationNode(state: AgentState) {
     logs.push(`   - Max price per night: ${maxPricePerNight.toLocaleString()}원`);
 
     // Room Search - Use dynamic location and budget-aware pricing
-    // CRITICAL: searchLocation MUST match the flight destination
+    // CRITICAL: searchLocation MUST match the flight destination AND must have accommodation data
     logs.push(`🏨 Searching rooms in: ${searchLocation} (for flight destination: ${arrivalAirportCode})`);
     logs.push(`   Expected destination: ${destinationCity || 'Unknown'}, ${destinationCountry || 'Unknown'}`);
+
+    // Verify: Check if this country has accommodation data
+    const hasAccommodationData = availableLocations.some(loc =>
+        loc.country.toLowerCase() === searchLocation.toLowerCase() ||
+        loc.country.toLowerCase().includes(searchLocation.toLowerCase()) ||
+        searchLocation.toLowerCase().includes(loc.country.toLowerCase())
+    );
+
+    if (!hasAccommodationData) {
+        logs.push(`   ⚠️ WARNING: ${searchLocation} does NOT have accommodation data in database!`);
+        logs.push(`   Available countries: ${availableLocations.map(l => l.country).join(', ')}`);
+    } else {
+        logs.push(`   ✓ Verified: ${searchLocation} has accommodation data in database`);
+    }
 
     const rooms = await searchStructuredRooms({
         location: searchLocation,
@@ -421,6 +528,8 @@ export async function autoRecommendationNode(state: AgentState) {
         } else {
             logs.push(`   ✓ Verified: Room location matches flight destination`);
         }
+    } else if (rooms.length === 0) {
+        logs.push(`   ⚠️ No rooms found in ${searchLocation} - this confirms no accommodation data exists`);
     }
 
     const pickedRoom = rooms[0]; // Best room
