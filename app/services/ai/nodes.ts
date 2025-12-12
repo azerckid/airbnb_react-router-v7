@@ -4,9 +4,9 @@ import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { StringOutputParser } from "@langchain/core/output_parsers";
 import { Document } from "@langchain/core/documents";
 import { searchRooms } from "./core.server";
-import { searchFlights, type FlightOffer } from "./tools/flight.server";
+import { searchFlights, type FlightOffer, filterFlightsWithinHours } from "./tools/flight.server";
 import { searchStructuredRooms, type RoomListing } from "./tools/recommendation.server";
-import { getIpLocation, findNearestAirport } from "./tools/location.server";
+import { getIpLocation, findNearestAirport, findNearestAirports } from "./tools/location.server";
 
 // 1. Define State
 export interface AgentState {
@@ -94,48 +94,109 @@ export async function autoRecommendationNode(state: AgentState) {
         temperature: 0
     });
 
-    // 2. Detect Location
+    // 2. Detect Location and Find Multiple Airports
     let originCode = "ICN";
     let originCity = "Seoul";
+    let airports: Array<{ iataCode: string; name: string; distance: number }> = [];
 
     if (state.ip) {
         logs.push(`📍 Detecting location... (IP: ${state.ip})`);
         const loc = await getIpLocation(state.ip);
         if (loc) {
             originCity = loc.city || "Unknown";
-            const airport = await findNearestAirport(loc.lat, loc.lon);
-            if (airport) {
-                originCode = airport.iataCode;
-                logs.push(`✈️ Nearest Airport: ${airport.name} (${originCode}) - ${Math.round(airport.distance)}km`);
+            // Find multiple nearby airports (within 200km, up to 5 airports)
+            const nearbyAirports = await findNearestAirports(loc.lat, loc.lon, 200, 5);
+            if (nearbyAirports.length > 0) {
+                airports = nearbyAirports;
+                originCode = nearbyAirports[0].iataCode; // Use nearest as default
+                logs.push(`✈️ Found ${nearbyAirports.length} nearby airports:`);
+                nearbyAirports.forEach((airport, idx) => {
+                    logs.push(`   ${idx + 1}. ${airport.name} (${airport.iataCode}) - ${Math.round(airport.distance)}km`);
+                });
+            } else {
+                // Fallback to single airport search
+                const airport = await findNearestAirport(loc.lat, loc.lon);
+                if (airport) {
+                    originCode = airport.iataCode;
+                    airports = [airport];
+                    logs.push(`✈️ Nearest Airport: ${airport.name} (${originCode}) - ${Math.round(airport.distance)}km`);
+                }
             }
         }
     }
 
-    // 3. Flight Search (Target: FUK/Japan for demo 'Budget' style, or general popular)
-    const dest = "FUK";
+    // If no airports found, use default
+    if (airports.length === 0) {
+        airports = [{ iataCode: "ICN", name: "Incheon International Airport", distance: 0 }];
+    }
+
+    // 3. Flight Search - Search from all nearby airports
+    const dest = "FUK"; // Default destination (can be made dynamic later)
     const today = new Date();
     const flightDate = today.toISOString().split('T')[0]; // Today/Immediate
-    logs.push(`🔎 Searching flights from ${originCode} to ${dest} for ${flightDate}`);
+    const hoursFromNow = 6; // Filter flights departing within 6 hours
 
-    const flights = await searchFlights(originCode, dest, flightDate);
-    // @ts-ignore
-    const validFlights = (Array.isArray(flights) ? flights : []).flat().filter(f => typeof f !== 'string') as FlightOffer[];
+    logs.push(`🔎 Searching flights from ${airports.length} airport(s) to ${dest} for ${flightDate}`);
+    logs.push(`⏰ Filtering for flights departing within ${hoursFromNow} hours from now`);
+
+    // Search flights from all nearby airports
+    const allFlights: FlightOffer[] = [];
+    for (const airport of airports) {
+        try {
+            const flights = await searchFlights(airport.iataCode, dest, flightDate, hoursFromNow);
+            if (Array.isArray(flights)) {
+                const airportFlights = flights.map(f => ({
+                    ...f,
+                    originAirport: airport.iataCode,
+                    originAirportName: airport.name
+                }));
+                allFlights.push(...airportFlights);
+                logs.push(`   ✓ ${airport.iataCode}: Found ${airportFlights.length} flights within ${hoursFromNow}h`);
+            }
+        } catch (e) {
+            logs.push(`   ✗ ${airport.iataCode}: Search failed - ${e}`);
+        }
+    }
+
+    // Sort all flights by departure time (earliest first)
+    allFlights.sort((a, b) => {
+        const timeA = new Date(a.departure.at).getTime();
+        const timeB = new Date(b.departure.at).getTime();
+        return timeA - timeB;
+    });
+
+    // Additional filter to ensure all flights are within 6 hours (safety check)
+    const now = new Date();
+    const cutoffTime = new Date(now.getTime() + hoursFromNow * 60 * 60 * 1000);
+    const validFlights = allFlights.filter(f => {
+        const departureTime = new Date(f.departure.at);
+        return departureTime > now && departureTime <= cutoffTime;
+    });
+
+    logs.push(`✅ Total: ${validFlights.length} flights found within ${hoursFromNow} hours from ${airports.length} airport(s)`);
 
     let bestFlight = validFlights[0];
     let flightCost = 300000; // Default estimate
 
     // Fallback Mock if no flight found (For consistent Demo UX)
     if (!bestFlight) {
-        logs.push("⚠️ No flights found, using Mock Flight for demo.");
+        logs.push("⚠️ No flights found within 6 hours, using Mock Flight for demo.");
+        const mockDepartureTime = new Date(now.getTime() + 2 * 60 * 60 * 1000); // 2 hours from now
         bestFlight = {
             id: "mock-flight",
             airline: "Skyscanner Best Value",
             flightNumber: "SK001",
-            departure: { iataCode: originCode, at: "10:00" },
-            arrival: { iataCode: dest, at: "12:00" },
+            departure: {
+                iataCode: originCode,
+                at: mockDepartureTime.toISOString()
+            },
+            arrival: {
+                iataCode: dest,
+                at: new Date(mockDepartureTime.getTime() + 2 * 60 * 60 * 1000).toISOString()
+            },
             duration: "2H",
             price: { currency: "KRW", total: "300000" }
-        };
+        } as any;
     }
 
     if (bestFlight) {
@@ -179,15 +240,32 @@ export async function autoRecommendationNode(state: AgentState) {
     const dateShort = flightDate.slice(2).replace(/-/g, '');
     const flightLink = `https://www.skyscanner.co.kr/transport/flights/${originCode.toLowerCase()}/${dest.toLowerCase()}/${dateShort}`;
 
+    // Format departure time for display
+    const departureTime = bestFlight ? new Date(bestFlight.departure.at) : new Date();
+    const departureTimeStr = departureTime.toLocaleTimeString('ko-KR', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+    });
+    const arrivalTime = bestFlight ? new Date(bestFlight.arrival.at) : new Date();
+    const arrivalTimeStr = arrivalTime.toLocaleTimeString('ko-KR', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+    });
+
     const context = `
     User Location: ${originCity}
-    Nearest Airport: ${originCode}
+    Nearby Airports: ${airports.map(a => `${a.name} (${a.iataCode})`).join(', ')}
+    Selected Departure Airport: ${bestFlight ? (bestFlight as any).originAirportName || originCode : originCode}
     Destination: ${dest}
     Client Time: ${clientTime}
+    Search Criteria: Flights departing within ${hoursFromNow} hours from now
     
-    Flight: ${bestFlight ? `${bestFlight.airline} (Dep: ${bestFlight.departure.at}, Arr: ${bestFlight.arrival.at})` : "Estimated Flight (Check availability)"}
+    Flight: ${bestFlight ? `${bestFlight.airline} ${bestFlight.flightNumber} (Departure: ${departureTimeStr}, Arrival: ${arrivalTimeStr})` : "Estimated Flight (Check availability)"}
     Flight Cost: ${Math.floor(flightCost)} KRW
     Flight Link: ${flightLink}
+    Available Flights: ${validFlights.length} flights found within ${hoursFromNow} hours
     
     Accommodation: ${pickedRoom ? pickedRoom.title : "Standard Hotel"} (${pickedRoom ? pickedRoom.city : "City"})
     Room ID: ${pickedRoom ? pickedRoom.id : ""}
@@ -207,17 +285,20 @@ export async function autoRecommendationNode(state: AgentState) {
         Task: Generate a welcome message and trip plan in Korean based on the provided Context.
         
         1. Greeting:
-        Start with: "안녕하세요! 현재 시각 ${clientTime}입니다. 고객님을 위해 바로 떠나실 수 있는 최적의 여행지를 엄선하여 준비했습니다."
+        Start with: "안녕하세요! 현재 시각 ${clientTime}입니다. 고객님을 위해 지금 당장 출발할 수 있는 최적의 여행지를 엄선하여 준비했습니다."
 
         2. Plan Details (Narrative):
-        - Start by mentioning the nearest airport comfortably.
-        - **Present the Flight**: Describe the flight Option (Airline, Departure Time, Arrival Time, Cost) smoothly.
-          (Example: "인천공항에서 14시에 출발하여 16시에 도착하는 홍콩 익스프레스가 가장 합리적인 옵션으로 검색되었습니다.")
+        - Start by mentioning the user's location and nearby airports.
+        - **Present the Flight**: Emphasize that this flight departs within ${hoursFromNow} hours from now.
+          Describe the flight Option (Airline, Flight Number, Departure Time, Arrival Time, Cost) smoothly.
+          (Example: "인천공항에서 ${departureTimeStr}에 출발하여 ${arrivalTimeStr}에 도착하는 ${bestFlight?.airline || '항공편'}이 ${hoursFromNow}시간 내 출발 가능한 최적의 옵션으로 검색되었습니다.")
           (CRITICAL: You MUST make the text "[Airline Name] ([Departure Time])" a clickable Markdown link using the [Flight Link] from context.
-           Example: [Hong Kong Express (14:00)](https://www.skyscanner.co.kr/...))
-        - **Present the Accommodation**: Recommend the hotel.
+           Example: [${bestFlight?.airline || '항공편'} (${departureTimeStr})](https://www.skyscanner.co.kr/...))
+          - Mention if multiple airports were searched and how many flights were found.
+        - **Present the Accommodation**: Recommend the hotel in the destination city.
           (CRITICAL: STRICTLY format the Room link as: [RoomTitle](/rooms/${pickedRoom ? pickedRoom.id : ""}). Do NOT add spaces inside the link syntax.)
         - **Cost & Summary**: Briefly mention the meal costs and the total estimated trip budget compared to the target.
+          Emphasize that this is a "지금 당장 출발 가능한" (can depart right now) trip option.
         
         Context Data:
         {context}

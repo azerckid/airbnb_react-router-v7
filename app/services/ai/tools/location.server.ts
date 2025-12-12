@@ -71,3 +71,40 @@ export async function findNearestAirport(lat: number, lon: number): Promise<Airp
         return null;
     }
 }
+
+/**
+ * Find multiple nearest airports within a radius
+ * @param lat Latitude
+ * @param lon Longitude
+ * @param radiusKm Search radius in kilometers (default: 200km)
+ * @param limit Maximum number of airports to return (default: 5)
+ * @returns Array of airports sorted by distance
+ */
+export async function findNearestAirports(
+    lat: number,
+    lon: number,
+    radiusKm: number = 200,
+    limit: number = 5
+): Promise<Airport[]> {
+    try {
+        const response = await amadeus.referenceData.locations.airports.get({
+            latitude: lat,
+            longitude: lon,
+            radius: radiusKm,
+            page: { limit },
+            sort: 'distance'
+        });
+
+        if (!response.data || response.data.length === 0) return [];
+
+        return response.data.map((airport: any) => ({
+            iataCode: airport.iataCode,
+            name: airport.name,
+            distance: airport.distance.value,
+            cityCode: airport.address.cityCode
+        }));
+    } catch (e) {
+        console.error("Amadeus Multiple Airport Search Error:", e);
+        return [];
+    }
+}

@@ -29,12 +29,47 @@ export interface FlightOffer {
     };
 }
 
+/**
+ * Filter flights that depart within the specified hours from now
+ * @param flights Array of flight offers
+ * @param hoursFromNow Hours from current time (default: 6)
+ * @returns Filtered and sorted flights (by departure time)
+ */
+export function filterFlightsWithinHours(
+    flights: FlightOffer[],
+    hoursFromNow: number = 6
+): FlightOffer[] {
+    const now = new Date();
+    const cutoffTime = new Date(now.getTime() + hoursFromNow * 60 * 60 * 1000);
+
+    const validFlights = flights.filter((flight) => {
+        try {
+            // Parse departure time (format: "2024-01-15T14:30:00" or "2024-01-15T14:30")
+            const departureTime = new Date(flight.departure.at);
+
+            // Check if departure is in the future and within the time window
+            return departureTime > now && departureTime <= cutoffTime;
+        } catch (e) {
+            console.error(`Error parsing departure time for flight ${flight.id}:`, e);
+            return false;
+        }
+    });
+
+    // Sort by departure time (earliest first)
+    return validFlights.sort((a, b) => {
+        const timeA = new Date(a.departure.at).getTime();
+        const timeB = new Date(b.departure.at).getTime();
+        return timeA - timeB;
+    });
+}
+
 export async function searchFlights(
     origin: string,
     destination: string,
-    departureDate: string
+    departureDate: string,
+    filterWithinHours?: number // Optional: filter flights within N hours from now
 ): Promise<FlightOffer[] | string> {
-    console.log(`✈️ Amadeus: Searching flights from ${origin} to ${destination} on ${departureDate}`);
+    console.log(`✈️ Amadeus: Searching flights from ${origin} to ${destination} on ${departureDate}${filterWithinHours ? ` (within ${filterWithinHours}h)` : ''}`);
 
     if (!process.env.AMADEUS_CLIENT_ID || !process.env.AMADEUS_CLIENT_SECRET) {
         console.error("❌ Amadeus API keys missing.");
@@ -47,7 +82,7 @@ export async function searchFlights(
             destinationLocationCode: destination,
             departureDate: departureDate,
             adults: '1',
-            max: '5' // Limit to top 5 results
+            max: '20' // Increase limit to get more results for filtering
         });
 
         if (!response.data || response.data.length === 0) {
@@ -109,6 +144,13 @@ export async function searchFlights(
                 }
             };
         });
+
+        // Apply time filter if specified
+        if (filterWithinHours !== undefined) {
+            const filtered = filterFlightsWithinHours(offers, filterWithinHours);
+            console.log(`⏰ Filtered ${offers.length} flights to ${filtered.length} within ${filterWithinHours} hours`);
+            return filtered;
+        }
 
         return offers;
 
