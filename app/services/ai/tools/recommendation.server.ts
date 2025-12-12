@@ -74,3 +74,42 @@ export async function searchStructuredRooms(params: RoomSearchParams): Promise<R
         return [];
     }
 }
+
+/**
+ * Get list of countries/cities that have accommodation data in the database
+ * @returns Array of unique countries and cities with room data
+ */
+export async function getAvailableLocations(): Promise<Array<{ country: string; cities: string[] }>> {
+    try {
+        const rooms = await prisma.room.findMany({
+            select: {
+                country: true,
+                city: true,
+            },
+            distinct: ['country', 'city'],
+            where: {
+                isActive: true
+            }
+        });
+
+        // Group by country
+        const locationMap = new Map<string, Set<string>>();
+        
+        rooms.forEach(room => {
+            if (room.country && room.city) {
+                if (!locationMap.has(room.country)) {
+                    locationMap.set(room.country, new Set());
+                }
+                locationMap.get(room.country)!.add(room.city);
+            }
+        });
+
+        return Array.from(locationMap.entries()).map(([country, cities]) => ({
+            country,
+            cities: Array.from(cities)
+        }));
+    } catch (e) {
+        console.error("❌ Failed to get available locations:", e);
+        return [];
+    }
+}

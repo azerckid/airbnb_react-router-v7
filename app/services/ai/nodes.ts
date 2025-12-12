@@ -5,8 +5,8 @@ import { StringOutputParser } from "@langchain/core/output_parsers";
 import { Document } from "@langchain/core/documents";
 import { searchRooms } from "./core.server";
 import { searchFlights, type FlightOffer, filterFlightsWithinHours } from "./tools/flight.server";
-import { searchStructuredRooms, type RoomListing } from "./tools/recommendation.server";
-import { getIpLocation, findNearestAirport, findNearestAirports, getAirportLocation } from "./tools/location.server";
+import { searchStructuredRooms, type RoomListing, getAvailableLocations } from "./tools/recommendation.server";
+import { getIpLocation, findNearestAirport, findNearestAirports, getAirportLocation, getAirportLocationByCountry } from "./tools/location.server";
 
 // 1. Define State
 export interface AgentState {
@@ -125,41 +125,110 @@ export async function autoRecommendationNode(state: AgentState) {
         }
     }
 
-    // If no airports found, use default
+    // If no airports found, use all major Korean airports
     if (airports.length === 0) {
-        airports = [{ iataCode: "ICN", name: "Incheon International Airport", distance: 0 }];
+        airports = [
+            { iataCode: "ICN", name: "Incheon International Airport", distance: 0 },
+            { iataCode: "GMP", name: "Gimpo International Airport", distance: 0 },
+            { iataCode: "PUS", name: "Gimhae International Airport", distance: 0 }
+        ];
+        logs.push(`✈️ Using default major Korean airports: ICN, GMP, PUS`);
+    } else {
+        // Add major airports if not already included
+        const airportCodes = new Set(airports.map(a => a.iataCode));
+        if (!airportCodes.has("ICN")) {
+            airports.push({ iataCode: "ICN", name: "Incheon International Airport", distance: 0 });
+        }
+        if (!airportCodes.has("GMP")) {
+            airports.push({ iataCode: "GMP", name: "Gimpo International Airport", distance: 0 });
+        }
+        if (!airportCodes.has("PUS")) {
+            airports.push({ iataCode: "PUS", name: "Gimhae International Airport", distance: 0 });
+        }
+        logs.push(`✈️ Total airports to search: ${airports.map(a => a.iataCode).join(', ')}`);
     }
 
+    // 2.5. Get available destinations (locations with accommodation data)
+    logs.push("🏨 Finding destinations with accommodation data...");
+    const availableLocations = await getAvailableLocations();
+    logs.push(`   ✓ Found ${availableLocations.length} countries with accommodation data`);
+
+    if (availableLocations.length === 0) {
+        logs.push("⚠️ No accommodation data found. Using default destination.");
+        // Fallback to default
+        availableLocations.push({ country: "Japan", cities: ["Fukuoka", "Tokyo", "Osaka"] });
+    }
+
+    // Get airport codes for available destinations
+    const destinationOptions: Array<{ country: string; city: string; airportCode: string }> = [];
+
+    for (const location of availableLocations) {
+        for (const city of location.cities) {
+            // Try to get airport code for this city/country
+            // For now, we'll use a simple mapping or search
+            // Priority: Use country-level airport codes
+            const airportInfo = await getAirportLocationByCountry(location.country);
+            if (airportInfo && airportInfo.iataCode) {
+                destinationOptions.push({
+                    country: location.country,
+                    city: city,
+                    airportCode: airportInfo.iataCode
+                });
+                logs.push(`   ✓ ${city}, ${location.country}: ${airportInfo.iataCode}`);
+            }
+        }
+    }
+
+    // Remove duplicates by airport code
+    const uniqueDestinations = Array.from(
+        new Map(destinationOptions.map(d => [d.airportCode, d])).values()
+    );
+
+    if (uniqueDestinations.length === 0) {
+        logs.push("⚠️ Could not determine destination airports. Using default: FUK");
+        uniqueDestinations.push({ country: "Japan", city: "Fukuoka", airportCode: "FUK" });
+    }
+
+    logs.push(`🎯 Will search flights to ${uniqueDestinations.length} destination(s): ${uniqueDestinations.map(d => `${d.city} (${d.airportCode})`).join(', ')}`);
+
     // 3. Flight Search - Sequential search: 6h -> 24h -> next day
-    const dest = "FUK"; // Default destination (can be made dynamic later)
     const today = new Date();
     const now = new Date();
     const todayDate = today.toISOString().split('T')[0];
 
-    // Helper function to search flights with time filter
+    // Helper function to search flights with time filter for all destinations
     const searchFlightsWithTimeWindow = async (
         searchDate: string,
         hoursWindow: number,
-        searchLabel: string
+        searchLabel: string,
+        destinations: Array<{ country: string; city: string; airportCode: string }>
     ): Promise<FlightOffer[]> => {
-        logs.push(`🔎 ${searchLabel}: Searching flights from ${airports.length} airport(s) to ${dest} for ${searchDate}`);
+        logs.push(`🔎 ${searchLabel}: Searching flights from ${airports.length} airport(s) to ${destinations.length} destination(s) for ${searchDate}`);
         logs.push(`⏰ Filtering for flights departing within ${hoursWindow} hours from now`);
 
         const allFlights: FlightOffer[] = [];
+
+        // Search from all origin airports to all destinations
         for (const airport of airports) {
-            try {
-                const flights = await searchFlights(airport.iataCode, dest, searchDate, hoursWindow);
-                if (Array.isArray(flights)) {
-                    const airportFlights = flights.map(f => ({
-                        ...f,
-                        originAirport: airport.iataCode,
-                        originAirportName: airport.name
-                    }));
-                    allFlights.push(...airportFlights);
-                    logs.push(`   ✓ ${airport.iataCode}: Found ${airportFlights.length} flights within ${hoursWindow}h`);
+            for (const destination of destinations) {
+                try {
+                    const flights = await searchFlights(airport.iataCode, destination.airportCode, searchDate, hoursWindow);
+                    if (Array.isArray(flights)) {
+                        const airportFlights = flights.map(f => ({
+                            ...f,
+                            originAirport: airport.iataCode,
+                            originAirportName: airport.name,
+                            destinationCountry: destination.country,
+                            destinationCity: destination.city
+                        }));
+                        allFlights.push(...airportFlights);
+                        if (airportFlights.length > 0) {
+                            logs.push(`   ✓ ${airport.iataCode} → ${destination.airportCode} (${destination.city}): ${airportFlights.length} flights`);
+                        }
+                    }
+                } catch (e) {
+                    // Silent fail for individual searches to continue with others
                 }
-            } catch (e) {
-                logs.push(`   ✗ ${airport.iataCode}: Search failed - ${e}`);
             }
         }
 
@@ -176,7 +245,7 @@ export async function autoRecommendationNode(state: AgentState) {
             return departureTime > now && departureTime <= cutoffTime;
         });
 
-        logs.push(`✅ ${searchLabel}: ${validFlights.length} flights found`);
+        logs.push(`✅ ${searchLabel}: ${validFlights.length} flights found from ${airports.length} airports to ${destinations.length} destinations`);
         return validFlights;
     };
 
@@ -185,16 +254,17 @@ export async function autoRecommendationNode(state: AgentState) {
     let searchDate = todayDate;
     let hoursFromNow = 6;
     let searchLabel = "6시간 이내";
+    let selectedDestination = uniqueDestinations[0]; // Will be updated when flight is found
 
     // Step 1: Search within 6 hours
-    validFlights = await searchFlightsWithTimeWindow(todayDate, 6, "Step 1: 6시간 이내");
+    validFlights = await searchFlightsWithTimeWindow(todayDate, 6, "Step 1: 6시간 이내", uniqueDestinations);
 
     // Step 2: If no flights found, search within 24 hours
     if (validFlights.length === 0) {
         logs.push("⚠️ No flights found within 6 hours. Expanding search to 24 hours...");
         hoursFromNow = 24;
         searchLabel = "24시간 이내";
-        validFlights = await searchFlightsWithTimeWindow(todayDate, 24, "Step 2: 24시간 이내");
+        validFlights = await searchFlightsWithTimeWindow(todayDate, 24, "Step 2: 24시간 이내", uniqueDestinations);
     }
 
     // Step 3: If still no flights, search next day (no time filter, just date)
@@ -207,23 +277,29 @@ export async function autoRecommendationNode(state: AgentState) {
         searchLabel = "다음날";
 
         // Search next day without time filter (search all flights for that day)
-        logs.push(`🔎 Step 3: 다음날 검색 - Searching flights from ${airports.length} airport(s) to ${dest} for ${searchDate}`);
+        logs.push(`🔎 Step 3: 다음날 검색 - Searching flights from ${airports.length} airport(s) to ${uniqueDestinations.length} destination(s) for ${searchDate}`);
         const nextDayFlights: FlightOffer[] = [];
         for (const airport of airports) {
-            try {
-                // For next day, don't filter by hours, just search the date
-                const flights = await searchFlights(airport.iataCode, dest, searchDate);
-                if (Array.isArray(flights)) {
-                    const airportFlights = flights.map(f => ({
-                        ...f,
-                        originAirport: airport.iataCode,
-                        originAirportName: airport.name
-                    }));
-                    nextDayFlights.push(...airportFlights);
-                    logs.push(`   ✓ ${airport.iataCode}: Found ${airportFlights.length} flights for ${searchDate}`);
+            for (const destination of uniqueDestinations) {
+                try {
+                    // For next day, don't filter by hours, just search the date
+                    const flights = await searchFlights(airport.iataCode, destination.airportCode, searchDate);
+                    if (Array.isArray(flights)) {
+                        const airportFlights = flights.map(f => ({
+                            ...f,
+                            originAirport: airport.iataCode,
+                            originAirportName: airport.name,
+                            destinationCountry: destination.country,
+                            destinationCity: destination.city
+                        }));
+                        nextDayFlights.push(...airportFlights);
+                        if (airportFlights.length > 0) {
+                            logs.push(`   ✓ ${airport.iataCode} → ${destination.airportCode} (${destination.city}): ${airportFlights.length} flights`);
+                        }
+                    }
+                } catch (e) {
+                    // Silent fail
                 }
-            } catch (e) {
-                logs.push(`   ✗ ${airport.iataCode}: Search failed - ${e}`);
             }
         }
 
@@ -245,26 +321,61 @@ export async function autoRecommendationNode(state: AgentState) {
     if (bestFlight) {
         flightCost = parseFloat(bestFlight.price.total);
         if (bestFlight.price.currency !== "KRW") flightCost *= 1450;
+
+        // Get destination info from flight
+        const flightDest = (bestFlight as any).destinationCountry || uniqueDestinations.find(d => d.airportCode === bestFlight.arrival.iataCode)?.country;
+        if (flightDest) {
+            selectedDestination = uniqueDestinations.find(d => d.country === flightDest) || selectedDestination;
+        }
+
         logs.push(`✅ Selected flight: ${bestFlight.airline} ${bestFlight.flightNumber} (${searchLabel})`);
+        logs.push(`   → Destination: ${(bestFlight as any).destinationCity || 'Unknown'}, ${(bestFlight as any).destinationCountry || 'Unknown'}`);
     } else {
         logs.push("⚠️ No flights found in any time window. Will inform user.");
     }
 
-    // 4. Get destination location from arrival airport
-    // If no flight found, use default destination for location search
-    const arrivalAirportCode = bestFlight ? bestFlight.arrival.iataCode : dest;
-    logs.push(`📍 Getting location info for destination airport: ${arrivalAirportCode}`);
+    // 4. Get destination location from selected flight - MUST match the flight destination
+    const arrivalAirportCode = bestFlight ? bestFlight.arrival.iataCode : (selectedDestination?.airportCode || "FUK");
 
-    let destinationLocation = await getAirportLocation(arrivalAirportCode);
-    let searchLocation = "Japan"; // Default fallback
+    // Get destination info from flight metadata first, then from airport lookup
+    let destinationCountry = bestFlight ? ((bestFlight as any).destinationCountry) : null;
+    let destinationCity = bestFlight ? ((bestFlight as any).destinationCity) : null;
+
+    logs.push(`📍 Getting location info for flight destination: ${arrivalAirportCode}`);
+    logs.push(`   Flight metadata: ${destinationCity || 'N/A'}, ${destinationCountry || 'N/A'}`);
+
+    // Always lookup airport location to get accurate country/city
+    const destinationLocation = await getAirportLocation(arrivalAirportCode);
 
     if (destinationLocation) {
-        // Prefer country name, fallback to city name
-        searchLocation = destinationLocation.country || destinationLocation.city || "Japan";
-        logs.push(`   ✓ Destination: ${destinationLocation.city || 'Unknown'}, ${destinationLocation.country || 'Unknown'}`);
-        logs.push(`   ✓ Searching rooms in: ${searchLocation}`);
+        // Use airport location as source of truth
+        destinationCountry = destinationLocation.country || destinationCountry;
+        destinationCity = destinationLocation.city || destinationCity;
+        logs.push(`   ✓ Airport lookup: ${destinationCity || 'Unknown'}, ${destinationCountry || 'Unknown'}`);
+    }
+
+    // Find matching destination from our list to ensure we search in the right place
+    const matchingDestination = uniqueDestinations.find(d => d.airportCode === arrivalAirportCode);
+    if (matchingDestination) {
+        destinationCountry = matchingDestination.country;
+        destinationCity = matchingDestination.city;
+        logs.push(`   ✓ Matched destination: ${destinationCity}, ${destinationCountry}`);
+    }
+
+    // Use country name for room search - this MUST match the flight destination
+    let searchLocation = destinationCountry || "Japan";
+
+    if (!destinationCountry) {
+        logs.push(`   ⚠️ Could not determine destination country from airport ${arrivalAirportCode}`);
+        logs.push(`   ⚠️ Will search in: ${searchLocation} (fallback)`);
     } else {
-        logs.push(`   ⚠️ Could not determine destination location, using default: ${searchLocation}`);
+        logs.push(`   ✓ Final destination: ${destinationCity || 'Unknown'}, ${destinationCountry}`);
+        logs.push(`   ✓ Searching rooms in: ${searchLocation} (must match flight destination)`);
+    }
+
+    // Verify: Log the search location to ensure it matches the flight
+    if (bestFlight) {
+        logs.push(`   🔍 Verification: Flight to ${arrivalAirportCode} → Searching rooms in ${searchLocation}`);
     }
 
     // 5. Budget and Travel Duration Setup
@@ -290,12 +401,27 @@ export async function autoRecommendationNode(state: AgentState) {
     logs.push(`   - Max price per night: ${maxPricePerNight.toLocaleString()}원`);
 
     // Room Search - Use dynamic location and budget-aware pricing
-    logs.push("Please wait, searching for rooms...");
+    // CRITICAL: searchLocation MUST match the flight destination
+    logs.push(`🏨 Searching rooms in: ${searchLocation} (for flight destination: ${arrivalAirportCode})`);
+    logs.push(`   Expected destination: ${destinationCity || 'Unknown'}, ${destinationCountry || 'Unknown'}`);
+
     const rooms = await searchStructuredRooms({
         location: searchLocation,
         limit: 3,
         maxPrice: Math.max(maxPricePerNight, 50000) // Minimum 50,000 to ensure some results
     });
+
+    logs.push(`   Found ${rooms.length} rooms in ${searchLocation}`);
+
+    // Verify room location matches flight destination
+    if (rooms.length > 0 && destinationCountry) {
+        const roomCountry = rooms[0].country;
+        if (roomCountry && roomCountry.toLowerCase() !== destinationCountry.toLowerCase()) {
+            logs.push(`   ⚠️ WARNING: Room country (${roomCountry}) does not match flight destination (${destinationCountry})!`);
+        } else {
+            logs.push(`   ✓ Verified: Room location matches flight destination`);
+        }
+    }
 
     const pickedRoom = rooms[0]; // Best room
     let roomCostPerNight = pickedRoom ? pickedRoom.price : 100000;
@@ -319,7 +445,8 @@ export async function autoRecommendationNode(state: AgentState) {
     // Generate Flight Link (Skyscanner: origin/dest/YYMMDD) - only if flight found
     // searchDate is YYYY-MM-DD -> YYMMDD
     const dateShort = searchDate.slice(2).replace(/-/g, '');
-    const flightLink = hasFlights ? `https://www.skyscanner.co.kr/transport/flights/${originCode.toLowerCase()}/${dest.toLowerCase()}/${dateShort}` : '';
+    const destAirportCode = bestFlight ? bestFlight.arrival.iataCode : (selectedDestination?.airportCode || "FUK");
+    const flightLink = hasFlights ? `https://www.skyscanner.co.kr/transport/flights/${originCode.toLowerCase()}/${destAirportCode.toLowerCase()}/${dateShort}` : '';
 
     // Format departure time for display
     const departureTime = bestFlight ? new Date(bestFlight.departure.at) : null;

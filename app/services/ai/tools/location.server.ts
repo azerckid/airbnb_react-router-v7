@@ -191,3 +191,72 @@ function getAirportLocationFallback(airportCode: string): AirportLocation | null
 
     return null;
 }
+
+/**
+ * Get airport code for a country (returns major airport for that country)
+ * @param country Country name
+ * @returns Airport location with IATA code
+ */
+export async function getAirportLocationByCountry(country: string): Promise<AirportLocation & { iataCode?: string } | null> {
+    // Country to major airport mapping
+    const countryToAirportMap: Record<string, { iataCode: string; city: string }> = {
+        "Japan": { iataCode: "NRT", city: "Tokyo" },
+        "South Korea": { iataCode: "ICN", city: "Seoul" },
+        "Korea": { iataCode: "ICN", city: "Seoul" },
+        "China": { iataCode: "PEK", city: "Beijing" },
+        "Thailand": { iataCode: "BKK", city: "Bangkok" },
+        "Singapore": { iataCode: "SIN", city: "Singapore" },
+        "Malaysia": { iataCode: "KUL", city: "Kuala Lumpur" },
+        "Hong Kong": { iataCode: "HKG", city: "Hong Kong" },
+        "Taiwan": { iataCode: "TPE", city: "Taipei" },
+        "Philippines": { iataCode: "MNL", city: "Manila" },
+        "Vietnam": { iataCode: "SGN", city: "Ho Chi Minh City" },
+        "UAE": { iataCode: "DXB", city: "Dubai" },
+        "Qatar": { iataCode: "DOH", city: "Doha" },
+    };
+
+    // Try exact match first
+    const normalizedCountry = country.trim();
+    let airportInfo = countryToAirportMap[normalizedCountry];
+    
+    // Try case-insensitive match
+    if (!airportInfo) {
+        const lowerCountry = normalizedCountry.toLowerCase();
+        for (const [key, value] of Object.entries(countryToAirportMap)) {
+            if (key.toLowerCase() === lowerCountry) {
+                airportInfo = value;
+                break;
+            }
+        }
+    }
+
+    if (airportInfo) {
+        return {
+            iataCode: airportInfo.iataCode,
+            city: airportInfo.city,
+            country: normalizedCountry
+        };
+    }
+
+    // If not found, try to search via Amadeus API
+    try {
+        const response = await amadeus.referenceData.locations.get({
+            keyword: normalizedCountry,
+            subType: 'AIRPORT',
+            page: { limit: 1 }
+        });
+
+        if (response.data && response.data.length > 0) {
+            const airport = response.data[0];
+            return {
+                iataCode: airport.iataCode,
+                city: airport.address?.cityName,
+                country: normalizedCountry
+            };
+        }
+    } catch (e) {
+        console.error(`Amadeus Country Airport Search Error for ${country}:`, e);
+    }
+
+    return null;
+}
