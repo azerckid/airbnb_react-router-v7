@@ -378,257 +378,257 @@ export async function autoRecommendationNode(state: AgentState) {
         }
     }
 
-        logs.push(`\n✅ Phase 3 완료: ${searchResults.length}개 조합 검색 완료`);
-        const foundFlightsCount = searchResults.filter(r => r.flight !== null).length;
-        logs.push(`   항공편 발견: ${foundFlightsCount}개 조합에서 항공편 찾음`);
-        logs.push(`   항공편 없음: ${searchResults.length - foundFlightsCount}개 조합`);
+    logs.push(`\n✅ Phase 3 완료: ${searchResults.length}개 조합 검색 완료`);
+    const foundFlightsCount = searchResults.filter(r => r.flight !== null).length;
+    logs.push(`   항공편 발견: ${foundFlightsCount}개 조합에서 항공편 찾음`);
+    logs.push(`   항공편 없음: ${searchResults.length - foundFlightsCount}개 조합`);
+    logs.push("=".repeat(60));
+
+    // ============================================
+    // Phase 4: 항공편 결과 정렬 및 선택
+    // ============================================
+    logs.push("\n" + "=".repeat(60));
+    logs.push("Phase 4: 항공편 결과 정렬 및 선택");
+    logs.push("=".repeat(60));
+
+    // 4.1. 항공편이 있는 결과만 필터링
+    const validResults = searchResults.filter(result => result.flight !== null);
+
+    if (validResults.length === 0) {
+        logs.push(`\n⚠️ 모든 조합에서 항공편을 찾을 수 없었습니다.`);
         logs.push("=".repeat(60));
-
-        // ============================================
-        // Phase 4: 항공편 결과 정렬 및 선택
-        // ============================================
-        logs.push("\n" + "=".repeat(60));
-        logs.push("Phase 4: 항공편 결과 정렬 및 선택");
-        logs.push("=".repeat(60));
-
-        // 4.1. 항공편이 있는 결과만 필터링
-        const validResults = searchResults.filter(result => result.flight !== null);
-
-        if (validResults.length === 0) {
-            logs.push(`\n⚠️ 모든 조합에서 항공편을 찾을 수 없었습니다.`);
-            logs.push("=".repeat(60));
-            return {
-                answer: `Phase 3-4 완료: ${searchResults.length}개 조합을 모두 검색했으나, 당장 출발 가능한 항공편을 찾을 수 없었습니다.\n\n검색 범위: 오늘 날짜 및 내일 날짜\n결과: 항공편 없음\n\n다른 날짜나 목적지로 검색해보시거나, 나중에 다시 시도해보시기 바랍니다.`,
-                foundFlights: [],
-                foundRooms: [],
-                logs
-            };
-        }
-
-        logs.push(`\n📊 ${validResults.length}개 유효한 항공편 결과 발견`);
-
-        // 4.2. 출발 시간 기준 오름차순 정렬
-        logs.push(`\n🔄 출발 시간 기준 정렬 중...`);
-        const sortedResults = validResults.sort((a, b) => {
-            if (!a.flight || !b.flight) return 0;
-            const timeA = new Date(a.flight.departure.at).getTime();
-            const timeB = new Date(b.flight.departure.at).getTime();
-            return timeA - timeB;
-        });
-
-        // 정렬된 결과 상위 5개 로깅
-        logs.push(`   정렬 완료 - 상위 5개 항공편:`);
-        sortedResults.slice(0, 5).forEach((result, idx) => {
-            if (result.flight) {
-                const depTime = new Date(result.flight.departure.at).toLocaleString('ko-KR');
-                logs.push(`   ${idx + 1}. ${result.origin} → ${result.destination} (${result.destinationCity})`);
-                logs.push(`      ${result.flight.airline} ${result.flight.flightNumber} - 출발: ${depTime}`);
-                logs.push(`      비용: ${result.flight.price.total} ${result.flight.price.currency}`);
-            }
-        });
-
-        // 4.3. 가장 빠른 출발 항공편 선택
-        const bestResult = sortedResults[0];
-        if (!bestResult || !bestResult.flight) {
-            logs.push(`\n⚠️ 정렬 후에도 유효한 항공편을 찾을 수 없습니다.`);
-            logs.push("=".repeat(60));
-            return {
-                answer: `Phase 4 완료: 항공편을 찾을 수 없었습니다.`,
-                foundFlights: [],
-                foundRooms: [],
-                logs
-            };
-        }
-
-        logs.push(`\n✅ 최종 선택된 항공편:`);
-        logs.push(`   출발지: ${bestResult.origin} (${bestResult.originName})`);
-        logs.push(`   목적지: ${bestResult.destination} (${bestResult.destinationCity}, ${bestResult.destinationCountry})`);
-        logs.push(`   항공편: ${bestResult.flight.airline} ${bestResult.flight.flightNumber}`);
-        logs.push(`   출발 시간: ${new Date(bestResult.flight.departure.at).toLocaleString('ko-KR')}`);
-        logs.push(`   도착 시간: ${new Date(bestResult.flight.arrival.at).toLocaleString('ko-KR')}`);
-        logs.push(`   비용: ${bestResult.flight.price.total} ${bestResult.flight.price.currency}`);
-        logs.push(`   검색 날짜: ${bestResult.searchDate || 'N/A'}`);
-        logs.push("=".repeat(60));
-        logs.push(`\n✅ Phase 4 완료: 가장 빠른 출발 항공편 선택 완료\n`);
-
-        // 4.4. 첫 항공편 발견 정보 (스트리밍용)
-        if (firstFlightResult && firstFlightResult.flight) {
-            logs.push(`⚡ 참고: 첫 항공편은 ${firstFlightResult.origin} → ${firstFlightResult.destination}에서 발견되었습니다.`);
-            logs.push(`   최종 선택된 항공편과 비교하여 더 빠른 항공편이 선택되었습니다.`);
-        }
-
-        // ============================================
-        // Phase 5: 숙소 검색
-        // ============================================
-        logs.push("\n" + "=".repeat(60));
-        logs.push("Phase 5: 숙소 검색");
-        logs.push("=".repeat(60));
-
-        // 5.1. 목적지 정보 추출
-        const destinationCountry = bestResult.destinationCountry;
-        const destinationCity = bestResult.destinationCity;
-        logs.push(`\n📍 목적지 정보:`);
-        logs.push(`   국가: ${destinationCountry}`);
-        logs.push(`   도시: ${destinationCity}`);
-        logs.push(`   공항: ${bestResult.destination}`);
-
-        // 5.2. 예산 계산
-        const targetBudget = 1000000; // 100만원 예산
-        const days = 6; // Travel duration: 5-7 days (use 6 days as average)
-        const mealPrice = 15000;
-        const mealsPerDay = 3;
-
-        const flightCost = parseFloat(bestResult.flight.price.total);
-        // Currency conversion if needed (assuming KRW, but check)
-        let flightCostKRW = flightCost;
-        if (bestResult.flight.price.currency !== "KRW") {
-            flightCostKRW = flightCost * 1450; // Approximate conversion
-            logs.push(`   💱 항공편 비용 환전: ${flightCost} ${bestResult.flight.price.currency} → ${Math.floor(flightCostKRW).toLocaleString()}원`);
-        }
-
-        const estimatedMealCost = days * mealsPerDay * mealPrice; // 270,000 for 6 days
-        const remainingBudgetForRoom = targetBudget - flightCostKRW - estimatedMealCost;
-        const maxPricePerNight = Math.floor(remainingBudgetForRoom / days);
-
-        logs.push(`\n💰 예산 계산:`);
-        logs.push(`   총 예산: ${targetBudget.toLocaleString()}원`);
-        logs.push(`   여행 기간: ${days}일`);
-        logs.push(`   항공편 비용: ${Math.floor(flightCostKRW).toLocaleString()}원`);
-        logs.push(`   식사 비용 (${days}일 × ${mealsPerDay}끼 × ${mealPrice.toLocaleString()}원): ${estimatedMealCost.toLocaleString()}원`);
-        logs.push(`   숙소 예산 (남은 금액): ${remainingBudgetForRoom.toLocaleString()}원`);
-        logs.push(`   숙소 1박 최대 가격: ${maxPricePerNight.toLocaleString()}원`);
-
-        // 5.3. 숙소 검색
-        logs.push(`\n🏨 숙소 검색 중...`);
-        logs.push(`   검색 위치: ${destinationCountry}`);
-        logs.push(`   최대 가격: ${maxPricePerNight.toLocaleString()}원/박`);
-
-        const rooms = await searchStructuredRooms({
-            location: destinationCountry,
-            maxPrice: Math.max(maxPricePerNight, 50000), // Minimum 50,000 to ensure some results
-            limit: 3
-        });
-
-        logs.push(`   검색 결과: ${rooms.length}개 숙소 발견`);
-
-        // 5.4. 숙소 선택
-        const selectedRoom = rooms[0]; // 첫 번째 숙소 선택
-        let roomCostPerNight = selectedRoom ? selectedRoom.price : 100000; // Default if no room found
-
-        // Currency Correction for Japan (JPY -> KRW)
-        if (selectedRoom && (selectedRoom.country === "Japan" || selectedRoom.city === "Tokyo" || selectedRoom.city === "Osaka" || selectedRoom.city === "Fukuoka" || selectedRoom.city === "Fukuoka-City" || selectedRoom.city === "Hiroshima" || selectedRoom.city === "Kyoto")) {
-            // Simple heuristic: If likely JPY
-            roomCostPerNight = roomCostPerNight * 9; // Approx 100 JPY = 900 KRW
-            logs.push(`   💱 일본 숙소 가격 환전: ${selectedRoom.price} → ${Math.floor(roomCostPerNight).toLocaleString()}원 (JPY → KRW)`);
-        }
-
-        if (selectedRoom) {
-            logs.push(`\n✅ 선택된 숙소:`);
-            logs.push(`   이름: ${selectedRoom.title}`);
-            logs.push(`   위치: ${selectedRoom.city}, ${selectedRoom.country}`);
-            logs.push(`   가격: ${Math.floor(roomCostPerNight).toLocaleString()}원/박`);
-            logs.push(`   ID: ${selectedRoom.id}`);
-        } else {
-            logs.push(`\n⚠️ 숙소를 찾을 수 없었습니다.`);
-            logs.push(`   기본 추정 가격 사용: ${roomCostPerNight.toLocaleString()}원/박`);
-        }
-
-        logs.push("=".repeat(60));
-        logs.push(`\n✅ Phase 5 완료: 숙소 검색 완료\n`);
-
-        // ============================================
-        // Phase 6: 비용 계산 및 최종 결과 생성
-        // ============================================
-        logs.push("=".repeat(60));
-        logs.push("Phase 6: 비용 계산 및 최종 결과 생성");
-        logs.push("=".repeat(60));
-
-        // 6.1. 비용 계산
-        const totalRoomCost = roomCostPerNight * days;
-        const totalMeals = mealPrice * mealsPerDay * days;
-        const totalCost = Math.floor(flightCostKRW + totalRoomCost + totalMeals);
-        const isWithinBudget = totalCost <= targetBudget;
-
-        logs.push(`\n💰 최종 비용 계산:`);
-        logs.push(`   항공편 비용: ${Math.floor(flightCostKRW).toLocaleString()}원`);
-        logs.push(`   숙소 비용: ${Math.floor(roomCostPerNight).toLocaleString()}원/박 × ${days}일 = ${Math.floor(totalRoomCost).toLocaleString()}원`);
-        logs.push(`   식사 비용: ${totalMeals.toLocaleString()}원`);
-        logs.push(`   ─────────────────────────`);
-        logs.push(`   총 비용: ${totalCost.toLocaleString()}원`);
-        logs.push(`   목표 예산: ${targetBudget.toLocaleString()}원`);
-        logs.push(`   예산 대비: ${isWithinBudget ? '✅ 예산 내' : '⚠️ 예산 초과'} (${isWithinBudget ? '-' : '+'}${Math.abs(totalCost - targetBudget).toLocaleString()}원)`);
-
-        // 6.2. 최종 결과 구성
-        const finalResult = {
-            flight: bestResult.flight,
-            flightInfo: {
-                origin: bestResult.origin,
-                originName: bestResult.originName,
-                destination: bestResult.destination,
-                destinationCity: destinationCity,
-                destinationCountry: destinationCountry,
-                airline: bestResult.flight.airline,
-                flightNumber: bestResult.flight.flightNumber,
-                departureTime: new Date(bestResult.flight.departure.at),
-                arrivalTime: new Date(bestResult.flight.arrival.at),
-                searchDate: bestResult.searchDate
-            },
-            accommodation: selectedRoom,
-            costs: {
-                flight: Math.floor(flightCostKRW),
-                accommodation: Math.floor(totalRoomCost),
-                meals: totalMeals,
-                total: totalCost
-            },
-            budget: {
-                target: targetBudget,
-                actual: totalCost,
-                isWithinBudget: isWithinBudget,
-                difference: totalCost - targetBudget
-            },
-            duration: days,
-            searchStats: {
-                totalCombinations: searchResults.length,
-                foundFlights: validResults.length,
-                firstFlightFoundAt: firstFlightResult && firstFlightResult.flight ? searchResults.findIndex(r => r.origin === firstFlightResult!.origin && r.destination === firstFlightResult!.destination) + 1 : null
-            }
+        return {
+            answer: `Phase 3-4 완료: ${searchResults.length}개 조합을 모두 검색했으나, 당장 출발 가능한 항공편을 찾을 수 없었습니다.\n\n검색 범위: 오늘 날짜 및 내일 날짜\n결과: 항공편 없음\n\n다른 날짜나 목적지로 검색해보시거나, 나중에 다시 시도해보시기 바랍니다.`,
+            foundFlights: [],
+            foundRooms: [],
+            logs
         };
+    }
 
-        logs.push(`\n✅ 최종 결과:`);
-        logs.push(`   항공편: ${finalResult.flightInfo.airline} ${finalResult.flightInfo.flightNumber}`);
-        logs.push(`   출발: ${finalResult.flightInfo.origin} → ${finalResult.flightInfo.destination}`);
-        logs.push(`   도착지: ${finalResult.flightInfo.destinationCity}, ${finalResult.flightInfo.destinationCountry}`);
-        logs.push(`   숙소: ${selectedRoom ? selectedRoom.title : '해당 지역의 숙소 데이터가 없습니다'}`);
-        logs.push(`   총 비용: ${totalCost.toLocaleString()}원`);
-        logs.push(`   예산: ${isWithinBudget ? '예산 내' : '예산 초과'}`);
+    logs.push(`\n📊 ${validResults.length}개 유효한 항공편 결과 발견`);
+
+    // 4.2. 출발 시간 기준 오름차순 정렬
+    logs.push(`\n🔄 출발 시간 기준 정렬 중...`);
+    const sortedResults = validResults.sort((a, b) => {
+        if (!a.flight || !b.flight) return 0;
+        const timeA = new Date(a.flight.departure.at).getTime();
+        const timeB = new Date(b.flight.departure.at).getTime();
+        return timeA - timeB;
+    });
+
+    // 정렬된 결과 상위 5개 로깅
+    logs.push(`   정렬 완료 - 상위 5개 항공편:`);
+    sortedResults.slice(0, 5).forEach((result, idx) => {
+        if (result.flight) {
+            const depTime = new Date(result.flight.departure.at).toLocaleString('ko-KR');
+            logs.push(`   ${idx + 1}. ${result.origin} → ${result.destination} (${result.destinationCity})`);
+            logs.push(`      ${result.flight.airline} ${result.flight.flightNumber} - 출발: ${depTime}`);
+            logs.push(`      비용: ${result.flight.price.total} ${result.flight.price.currency}`);
+        }
+    });
+
+    // 4.3. 가장 빠른 출발 항공편 선택
+    const bestResult = sortedResults[0];
+    if (!bestResult || !bestResult.flight) {
+        logs.push(`\n⚠️ 정렬 후에도 유효한 항공편을 찾을 수 없습니다.`);
         logs.push("=".repeat(60));
-        logs.push(`\n✅ Phase 6 완료: 비용 계산 및 최종 결과 생성 완료\n`);
+        return {
+            answer: `Phase 4 완료: 항공편을 찾을 수 없었습니다.`,
+            foundFlights: [],
+            foundRooms: [],
+            logs
+        };
+    }
 
-        // ============================================
-        // Phase 7: AI 응답 생성 및 스트리밍
-        // ============================================
-        logs.push("=".repeat(60));
-        logs.push("Phase 7: AI 응답 생성");
-        logs.push("=".repeat(60));
+    logs.push(`\n✅ 최종 선택된 항공편:`);
+    logs.push(`   출발지: ${bestResult.origin} (${bestResult.originName})`);
+    logs.push(`   목적지: ${bestResult.destination} (${bestResult.destinationCity}, ${bestResult.destinationCountry})`);
+    logs.push(`   항공편: ${bestResult.flight.airline} ${bestResult.flight.flightNumber}`);
+    logs.push(`   출발 시간: ${new Date(bestResult.flight.departure.at).toLocaleString('ko-KR')}`);
+    logs.push(`   도착 시간: ${new Date(bestResult.flight.arrival.at).toLocaleString('ko-KR')}`);
+    logs.push(`   비용: ${bestResult.flight.price.total} ${bestResult.flight.price.currency}`);
+    logs.push(`   검색 날짜: ${bestResult.searchDate || 'N/A'}`);
+    logs.push("=".repeat(60));
+    logs.push(`\n✅ Phase 4 완료: 가장 빠른 출발 항공편 선택 완료\n`);
 
-        // 7.1. Context 구성
-        const departureTimeStr = finalResult.flightInfo.departureTime.toLocaleTimeString('ko-KR', {
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false
-        });
-        const arrivalTimeStr = finalResult.flightInfo.arrivalTime.toLocaleTimeString('ko-KR', {
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false
-        });
+    // 4.4. 첫 항공편 발견 정보 (스트리밍용)
+    if (firstFlightResult && firstFlightResult.flight) {
+        logs.push(`⚡ 참고: 첫 항공편은 ${firstFlightResult.origin} → ${firstFlightResult.destination}에서 발견되었습니다.`);
+        logs.push(`   최종 선택된 항공편과 비교하여 더 빠른 항공편이 선택되었습니다.`);
+    }
 
-        // Generate Flight Link (Skyscanner: origin/dest/YYMMDD)
-        const searchDate = finalResult.flightInfo.searchDate || todayDate;
-        const dateShort = searchDate.slice(2).replace(/-/g, '');
-        const flightLink = `https://www.skyscanner.co.kr/transport/flights/${finalResult.flightInfo.origin.toLowerCase()}/${finalResult.flightInfo.destination.toLowerCase()}/${dateShort}`;
+    // ============================================
+    // Phase 5: 숙소 검색
+    // ============================================
+    logs.push("\n" + "=".repeat(60));
+    logs.push("Phase 5: 숙소 검색");
+    logs.push("=".repeat(60));
 
-        const context = `
+    // 5.1. 목적지 정보 추출
+    const destinationCountry = bestResult.destinationCountry;
+    const destinationCity = bestResult.destinationCity;
+    logs.push(`\n📍 목적지 정보:`);
+    logs.push(`   국가: ${destinationCountry}`);
+    logs.push(`   도시: ${destinationCity}`);
+    logs.push(`   공항: ${bestResult.destination}`);
+
+    // 5.2. 예산 계산
+    const targetBudget = 1000000; // 100만원 예산
+    const days = 6; // Travel duration: 5-7 days (use 6 days as average)
+    const mealPrice = 15000;
+    const mealsPerDay = 3;
+
+    const flightCost = parseFloat(bestResult.flight.price.total);
+    // Currency conversion if needed (assuming KRW, but check)
+    let flightCostKRW = flightCost;
+    if (bestResult.flight.price.currency !== "KRW") {
+        flightCostKRW = flightCost * 1450; // Approximate conversion
+        logs.push(`   💱 항공편 비용 환전: ${flightCost} ${bestResult.flight.price.currency} → ${Math.floor(flightCostKRW).toLocaleString()}원`);
+    }
+
+    const estimatedMealCost = days * mealsPerDay * mealPrice; // 270,000 for 6 days
+    const remainingBudgetForRoom = targetBudget - flightCostKRW - estimatedMealCost;
+    const maxPricePerNight = Math.floor(remainingBudgetForRoom / days);
+
+    logs.push(`\n💰 예산 계산:`);
+    logs.push(`   총 예산: ${targetBudget.toLocaleString()}원`);
+    logs.push(`   여행 기간: ${days}일`);
+    logs.push(`   항공편 비용: ${Math.floor(flightCostKRW).toLocaleString()}원`);
+    logs.push(`   식사 비용 (${days}일 × ${mealsPerDay}끼 × ${mealPrice.toLocaleString()}원): ${estimatedMealCost.toLocaleString()}원`);
+    logs.push(`   숙소 예산 (남은 금액): ${remainingBudgetForRoom.toLocaleString()}원`);
+    logs.push(`   숙소 1박 최대 가격: ${maxPricePerNight.toLocaleString()}원`);
+
+    // 5.3. 숙소 검색
+    logs.push(`\n🏨 숙소 검색 중...`);
+    logs.push(`   검색 위치: ${destinationCountry}`);
+    logs.push(`   최대 가격: ${maxPricePerNight.toLocaleString()}원/박`);
+
+    const rooms = await searchStructuredRooms({
+        location: destinationCountry,
+        maxPrice: Math.max(maxPricePerNight, 50000), // Minimum 50,000 to ensure some results
+        limit: 3
+    });
+
+    logs.push(`   검색 결과: ${rooms.length}개 숙소 발견`);
+
+    // 5.4. 숙소 선택
+    const selectedRoom = rooms[0]; // 첫 번째 숙소 선택
+    let roomCostPerNight = selectedRoom ? selectedRoom.price : 100000; // Default if no room found
+
+    // Currency Correction for Japan (JPY -> KRW)
+    if (selectedRoom && (selectedRoom.country === "Japan" || selectedRoom.city === "Tokyo" || selectedRoom.city === "Osaka" || selectedRoom.city === "Fukuoka" || selectedRoom.city === "Fukuoka-City" || selectedRoom.city === "Hiroshima" || selectedRoom.city === "Kyoto")) {
+        // Simple heuristic: If likely JPY
+        roomCostPerNight = roomCostPerNight * 9; // Approx 100 JPY = 900 KRW
+        logs.push(`   💱 일본 숙소 가격 환전: ${selectedRoom.price} → ${Math.floor(roomCostPerNight).toLocaleString()}원 (JPY → KRW)`);
+    }
+
+    if (selectedRoom) {
+        logs.push(`\n✅ 선택된 숙소:`);
+        logs.push(`   이름: ${selectedRoom.title}`);
+        logs.push(`   위치: ${selectedRoom.city}, ${selectedRoom.country}`);
+        logs.push(`   가격: ${Math.floor(roomCostPerNight).toLocaleString()}원/박`);
+        logs.push(`   ID: ${selectedRoom.id}`);
+    } else {
+        logs.push(`\n⚠️ 숙소를 찾을 수 없었습니다.`);
+        logs.push(`   기본 추정 가격 사용: ${roomCostPerNight.toLocaleString()}원/박`);
+    }
+
+    logs.push("=".repeat(60));
+    logs.push(`\n✅ Phase 5 완료: 숙소 검색 완료\n`);
+
+    // ============================================
+    // Phase 6: 비용 계산 및 최종 결과 생성
+    // ============================================
+    logs.push("=".repeat(60));
+    logs.push("Phase 6: 비용 계산 및 최종 결과 생성");
+    logs.push("=".repeat(60));
+
+    // 6.1. 비용 계산
+    const totalRoomCost = roomCostPerNight * days;
+    const totalMeals = mealPrice * mealsPerDay * days;
+    const totalCost = Math.floor(flightCostKRW + totalRoomCost + totalMeals);
+    const isWithinBudget = totalCost <= targetBudget;
+
+    logs.push(`\n💰 최종 비용 계산:`);
+    logs.push(`   항공편 비용: ${Math.floor(flightCostKRW).toLocaleString()}원`);
+    logs.push(`   숙소 비용: ${Math.floor(roomCostPerNight).toLocaleString()}원/박 × ${days}일 = ${Math.floor(totalRoomCost).toLocaleString()}원`);
+    logs.push(`   식사 비용: ${totalMeals.toLocaleString()}원`);
+    logs.push(`   ─────────────────────────`);
+    logs.push(`   총 비용: ${totalCost.toLocaleString()}원`);
+    logs.push(`   목표 예산: ${targetBudget.toLocaleString()}원`);
+    logs.push(`   예산 대비: ${isWithinBudget ? '✅ 예산 내' : '⚠️ 예산 초과'} (${isWithinBudget ? '-' : '+'}${Math.abs(totalCost - targetBudget).toLocaleString()}원)`);
+
+    // 6.2. 최종 결과 구성
+    const finalResult = {
+        flight: bestResult.flight,
+        flightInfo: {
+            origin: bestResult.origin,
+            originName: bestResult.originName,
+            destination: bestResult.destination,
+            destinationCity: destinationCity,
+            destinationCountry: destinationCountry,
+            airline: bestResult.flight.airline,
+            flightNumber: bestResult.flight.flightNumber,
+            departureTime: new Date(bestResult.flight.departure.at),
+            arrivalTime: new Date(bestResult.flight.arrival.at),
+            searchDate: bestResult.searchDate
+        },
+        accommodation: selectedRoom,
+        costs: {
+            flight: Math.floor(flightCostKRW),
+            accommodation: Math.floor(totalRoomCost),
+            meals: totalMeals,
+            total: totalCost
+        },
+        budget: {
+            target: targetBudget,
+            actual: totalCost,
+            isWithinBudget: isWithinBudget,
+            difference: totalCost - targetBudget
+        },
+        duration: days,
+        searchStats: {
+            totalCombinations: searchResults.length,
+            foundFlights: validResults.length,
+            firstFlightFoundAt: firstFlightResult && firstFlightResult.flight ? searchResults.findIndex(r => r.origin === firstFlightResult!.origin && r.destination === firstFlightResult!.destination) + 1 : null
+        }
+    };
+
+    logs.push(`\n✅ 최종 결과:`);
+    logs.push(`   항공편: ${finalResult.flightInfo.airline} ${finalResult.flightInfo.flightNumber}`);
+    logs.push(`   출발: ${finalResult.flightInfo.origin} → ${finalResult.flightInfo.destination}`);
+    logs.push(`   도착지: ${finalResult.flightInfo.destinationCity}, ${finalResult.flightInfo.destinationCountry}`);
+    logs.push(`   숙소: ${selectedRoom ? selectedRoom.title : '해당 지역의 숙소 데이터가 없습니다'}`);
+    logs.push(`   총 비용: ${totalCost.toLocaleString()}원`);
+    logs.push(`   예산: ${isWithinBudget ? '예산 내' : '예산 초과'}`);
+    logs.push("=".repeat(60));
+    logs.push(`\n✅ Phase 6 완료: 비용 계산 및 최종 결과 생성 완료\n`);
+
+    // ============================================
+    // Phase 7: AI 응답 생성 및 스트리밍
+    // ============================================
+    logs.push("=".repeat(60));
+    logs.push("Phase 7: AI 응답 생성");
+    logs.push("=".repeat(60));
+
+    // 7.1. Context 구성
+    const departureTimeStr = finalResult.flightInfo.departureTime.toLocaleTimeString('ko-KR', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+    });
+    const arrivalTimeStr = finalResult.flightInfo.arrivalTime.toLocaleTimeString('ko-KR', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+    });
+
+    // Generate Flight Link (Skyscanner: origin/dest/YYMMDD)
+    const searchDate = finalResult.flightInfo.searchDate || todayDate;
+    const dateShort = searchDate.slice(2).replace(/-/g, '');
+    const flightLink = `https://www.skyscanner.co.kr/transport/flights/${finalResult.flightInfo.origin.toLowerCase()}/${finalResult.flightInfo.destination.toLowerCase()}/${dateShort}`;
+
+    const context = `
     검색 전략: 112개 조합 (14개 출발지 × 8개 목적지) 검색 완료
     검색 결과: ${finalResult.searchStats.totalCombinations}개 조합 중 ${finalResult.searchStats.foundFlights}개에서 항공편 발견
     ${finalResult.searchStats.firstFlightFoundAt ? `첫 항공편 발견: ${finalResult.searchStats.firstFlightFoundAt}번째 조합` : ''}
@@ -674,11 +674,11 @@ export async function autoRecommendationNode(state: AgentState) {
     예산 대비: ${finalResult.budget.isWithinBudget ? '예산 내' : '예산 초과'} (${finalResult.budget.difference > 0 ? '+' : ''}${finalResult.budget.difference.toLocaleString()}원)
     `;
 
-        // 7.2. AI 프롬프트 구성
-        logs.push(`\n🤖 AI 응답 생성 중...`);
+    // 7.2. AI 프롬프트 구성
+    logs.push(`\n🤖 AI 응답 생성 중...`);
 
-        const prompt = ChatPromptTemplate.fromMessages([
-            ["system", `
+    const prompt = ChatPromptTemplate.fromMessages([
+        ["system", `
         You are a smart travel concierge.
         
         Task: Generate a welcome message and trip plan in Korean based on the provided Context.
@@ -733,25 +733,25 @@ export async function autoRecommendationNode(state: AgentState) {
         - Write all text naturally without inserting spaces between characters.
         - Make sure all links are properly formatted as Markdown links without spaces in URLs.
         `],
-            ["human", "Recommend the trip now."]
-        ]);
+        ["human", "Recommend the trip now."]
+    ]);
 
-        // 7.3. AI 응답 생성
-        const chain = prompt.pipe(model).pipe(new StringOutputParser());
-        const answer = await chain.invoke({ context });
+    // 7.3. AI 응답 생성
+    const chain = prompt.pipe(model).pipe(new StringOutputParser());
+    const answer = await chain.invoke({ context });
 
-        logs.push(`\n✅ AI 응답 생성 완료`);
-        logs.push("=".repeat(60));
-        logs.push(`\n✅ Phase 7 완료: AI 응답 생성 완료\n`);
+    logs.push(`\n✅ AI 응답 생성 완료`);
+    logs.push("=".repeat(60));
+    logs.push(`\n✅ Phase 7 완료: AI 응답 생성 완료\n`);
 
-        // 7.4. 최종 결과 반환
-        return {
-            answer,
-            foundFlights: [bestResult.flight],
-            foundRooms: selectedRoom ? [selectedRoom] : [],
-            logs
-        };
-    }
+    // 7.4. 최종 결과 반환
+    return {
+        answer,
+        foundFlights: [bestResult.flight],
+        foundRooms: selectedRoom ? [selectedRoom] : [],
+        logs
+    };
+}
 
 
 // --- Keep Existing Nodes ---
