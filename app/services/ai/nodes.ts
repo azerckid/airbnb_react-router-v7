@@ -501,10 +501,149 @@ export async function autoRecommendationNode(state: AgentState) {
     logs.push("=".repeat(60));
     logs.push(`\n✅ Phase 6 완료: 비용 계산 및 최종 결과 생성 완료\n`);
 
-    // Phase 7에서 AI 응답 생성을 위해 결과 반환
-    // TODO: Phase 7에서 finalResult를 사용하여 AI 응답 생성
+    // ============================================
+    // Phase 7: AI 응답 생성 및 스트리밍
+    // ============================================
+    logs.push("=".repeat(60));
+    logs.push("Phase 7: AI 응답 생성");
+    logs.push("=".repeat(60));
+
+    // 7.1. Context 구성
+    const departureTimeStr = finalResult.flightInfo.departureTime.toLocaleTimeString('ko-KR', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+    });
+    const arrivalTimeStr = finalResult.flightInfo.arrivalTime.toLocaleTimeString('ko-KR', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+    });
+
+    // Generate Flight Link (Skyscanner: origin/dest/YYMMDD)
+    const searchDate = finalResult.flightInfo.searchDate || todayDate;
+    const dateShort = searchDate.slice(2).replace(/-/g, '');
+    const flightLink = `https://www.skyscanner.co.kr/transport/flights/${finalResult.flightInfo.origin.toLowerCase()}/${finalResult.flightInfo.destination.toLowerCase()}/${dateShort}`;
+
+    const context = `
+    검색 전략: 112개 조합 (14개 출발지 × 8개 목적지) 검색 완료
+    검색 결과: ${finalResult.searchStats.totalCombinations}개 조합 중 ${finalResult.searchStats.foundFlights}개에서 항공편 발견
+    ${finalResult.searchStats.firstFlightFoundAt ? `첫 항공편 발견: ${finalResult.searchStats.firstFlightFoundAt}번째 조합` : ''}
+    
+    출발 공항: ${finalResult.flightInfo.origin} (${finalResult.flightInfo.originName})
+    목적지 공항: ${finalResult.flightInfo.destination}
+    목적지: ${finalResult.flightInfo.destinationCity}, ${finalResult.flightInfo.destinationCountry}
+    현재 시각: ${clientTime}
+    검색 날짜: ${searchDate}
+    여행 기간: ${finalResult.duration}일 (5-7일 범위)
+    목표 예산: ${finalResult.budget.target.toLocaleString()}원
+    
+    항공편 정보:
+    항공사: ${finalResult.flightInfo.airline}
+    항공편 번호: ${finalResult.flightInfo.flightNumber}
+    출발 시간: ${departureTimeStr}
+    도착 시간: ${arrivalTimeStr}
+    항공편 비용: ${finalResult.costs.flight.toLocaleString()}원
+    항공편 링크: ${flightLink}
+    
+    숙소 정보:
+    ${selectedRoom ? `
+    숙소 이름: ${selectedRoom.title}
+    숙소 위치: ${selectedRoom.city}, ${selectedRoom.country}
+    숙소 ID: ${selectedRoom.id}
+    숙소 링크: /rooms/${selectedRoom.id}
+    숙소 비용: ${Math.floor(roomCostPerNight).toLocaleString()}원/박 × ${finalResult.duration}일 = ${finalResult.costs.accommodation.toLocaleString()}원
+    ` : `
+    숙소: 해당 지역의 숙소 데이터가 없습니다
+    현재 데이터베이스에 ${finalResult.flightInfo.destinationCountry} 지역의 숙소 정보가 등록되어 있지 않습니다
+    숙소 비용: ${finalResult.costs.accommodation.toLocaleString()}원 (기본 추정치, ${finalResult.duration}일)
+    `}
+    
+    비용 정보:
+    항공편 비용: ${finalResult.costs.flight.toLocaleString()}원
+    숙소 비용: ${finalResult.costs.accommodation.toLocaleString()}원
+    식사 비용: ${finalResult.costs.meals.toLocaleString()}원 (${finalResult.duration}일 × 3끼 × 15,000원)
+    총 비용: ${finalResult.costs.total.toLocaleString()}원
+    
+    예산 분석:
+    목표 예산: ${finalResult.budget.target.toLocaleString()}원
+    실제 비용: ${finalResult.budget.actual.toLocaleString()}원
+    예산 대비: ${finalResult.budget.isWithinBudget ? '예산 내' : '예산 초과'} (${finalResult.budget.difference > 0 ? '+' : ''}${finalResult.budget.difference.toLocaleString()}원)
+    `;
+
+    // 7.2. AI 프롬프트 구성
+    logs.push(`\n🤖 AI 응답 생성 중...`);
+
+    const prompt = ChatPromptTemplate.fromMessages([
+        ["system", `
+        You are a smart travel concierge.
+        
+        Task: Generate a welcome message and trip plan in Korean based on the provided Context.
+        
+        1. Greeting:
+        Start with: "안녕하세요! 현재 시각 ${clientTime}입니다. 고객님을 위해 지금 당장 출발할 수 있는 최적의 여행지를 엄선하여 준비했습니다."
+        
+        2. Search Process:
+        - Mention the comprehensive search: "112개 조합 (14개 출발지 × 8개 목적지)을 모두 검색한 결과"
+        - Mention search results: "총 ${finalResult.searchStats.totalCombinations}개 조합 중 ${finalResult.searchStats.foundFlights}개에서 항공편을 찾았으며, 가장 빠른 출발 시간의 항공편을 추천드립니다."
+        
+        3. Flight Information:
+        - Present the flight: "${finalResult.flightInfo.airline} ${finalResult.flightInfo.flightNumber} 항공편"
+        - Departure: "${finalResult.flightInfo.originName}에서 ${departureTimeStr}에 출발하여 ${arrivalTimeStr}에 도착"
+        - Cost: "비용은 ${finalResult.costs.flight.toLocaleString()}원입니다"
+        - CRITICAL: Make the airline name and time a clickable Markdown link: [${finalResult.flightInfo.airline} (${departureTimeStr})](${flightLink})
+        - IMPORTANT: The URL in parentheses MUST NOT contain any spaces. Write it as a single continuous string without spaces.
+        
+        4. Accommodation Information:
+        ${selectedRoom ? `
+        - Recommend the accommodation: "${selectedRoom.title}"
+        - Location: "${selectedRoom.city}, ${selectedRoom.country}"
+        - CRITICAL: Format the room link as: [${selectedRoom.title}](/rooms/${selectedRoom.id})
+        - IMPORTANT: Do NOT add spaces inside the link syntax. The URL path must be continuous without spaces.
+        - Cost: "숙소 비용은 ${finalResult.duration}일 기준으로 ${finalResult.costs.accommodation.toLocaleString()}원입니다"
+        ` : `
+        - Inform: "해당 지역의 숙소 데이터가 없습니다. 현재 데이터베이스에 ${finalResult.flightInfo.destinationCountry} 지역의 숙소 정보가 등록되어 있지 않습니다."
+        - Mention: "숙소 비용은 기본 추정치로 ${finalResult.costs.accommodation.toLocaleString()}원입니다 (${finalResult.duration}일 기준)"
+        - Do NOT create fake hotel names or links when no data is available.
+        `}
+        
+        5. Cost & Summary:
+        - Travel duration: "${finalResult.duration}일 여행 기준"
+        - Break down costs: "항공편 ${finalResult.costs.flight.toLocaleString()}원 + 숙소 ${finalResult.costs.accommodation.toLocaleString()}원 + 식사 ${finalResult.costs.meals.toLocaleString()}원"
+        - Total cost: "총 예상 비용 ${finalResult.costs.total.toLocaleString()}원"
+        - Budget comparison: "목표 예산 ${finalResult.budget.target.toLocaleString()}원 대비 ${finalResult.budget.isWithinBudget ? '예산 내' : '예산 초과'}입니다"
+        - If over budget: "이는 예산을 ${Math.abs(finalResult.budget.difference).toLocaleString()}원 초과하는 여행 계획입니다"
+        
+        6. Closing:
+        - "고객님의 멋진 여행을 기원합니다! 추가적인 도움이 필요하시면 언제든지 말씀해 주세요."
+        
+        Context Data:
+        {context}
+        
+        Tone: Polite, Professional (honorifics), and Concierge-like.
+        IMPORTANT: 
+        - Do NOT output brackets like [Flight Info] literally. Replace them with the actual data from Context.
+        - CRITICAL: Do NOT add spaces between characters in words. Write Korean text without unnecessary spaces.
+          Examples of WRONG: "고객 님", "항 공편", "숙 소", "비 용"
+          Examples of CORRECT: "고객님", "항공편", "숙소", "비용"
+        - When writing numbers with commas, use proper formatting: 1,000,000 (not 1, 000, 000)
+        - Write all text naturally without inserting spaces between characters.
+        - Make sure all links are properly formatted as Markdown links without spaces in URLs.
+        `],
+        ["human", "Recommend the trip now."]
+    ]);
+
+    // 7.3. AI 응답 생성
+    const chain = prompt.pipe(model).pipe(new StringOutputParser());
+    const answer = await chain.invoke({ context });
+
+    logs.push(`\n✅ AI 응답 생성 완료`);
+    logs.push("=".repeat(60));
+    logs.push(`\n✅ Phase 7 완료: AI 응답 생성 완료\n`);
+
+    // 7.4. 최종 결과 반환
     return {
-        answer: `Phase 3-6 완료: 항공편, 숙소, 비용 계산 완료!\n\n항공편: ${finalResult.flightInfo.airline} ${finalResult.flightInfo.flightNumber}\n출발: ${finalResult.flightInfo.origin} → ${finalResult.flightInfo.destination}\n도착지: ${finalResult.flightInfo.destinationCity}, ${finalResult.flightInfo.destinationCountry}\n출발 시간: ${finalResult.flightInfo.departureTime.toLocaleString('ko-KR')}\n도착 시간: ${finalResult.flightInfo.arrivalTime.toLocaleString('ko-KR')}\n항공편 비용: ${finalResult.costs.flight.toLocaleString()}원\n\n숙소: ${selectedRoom ? selectedRoom.title : '해당 지역의 숙소 데이터가 없습니다'}\n위치: ${destinationCity}, ${destinationCountry}\n숙소 비용: ${finalResult.costs.accommodation.toLocaleString()}원 (${days}일)\n\n식사 비용: ${finalResult.costs.meals.toLocaleString()}원\n\n총 비용: ${finalResult.costs.total.toLocaleString()}원\n목표 예산: ${finalResult.budget.target.toLocaleString()}원\n예산 대비: ${isWithinBudget ? '예산 내' : '예산 초과'} (${finalResult.budget.difference > 0 ? '+' : ''}${finalResult.budget.difference.toLocaleString()}원)\n\n다음 단계: Phase 7에서 AI 응답 생성 예정`,
+        answer,
         foundFlights: [bestResult.flight],
         foundRooms: selectedRoom ? [selectedRoom] : [],
         logs
