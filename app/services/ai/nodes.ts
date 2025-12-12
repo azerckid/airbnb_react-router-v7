@@ -165,9 +165,27 @@ export async function autoRecommendationNode(state: AgentState) {
     // 3.1. 날짜 설정 (한국 시간대 기준)
     // 한국 시간대(KST, UTC+9) 기준으로 오늘 날짜 계산
     const now = new Date();
-    const koreaTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
-    const todayDate = koreaTime.toISOString().split('T')[0];
+    // 한국 시간대의 날짜를 정확히 계산
+    const koreaDateStr = now.toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }); // YYYY-MM-DD 형식
+    const todayDate = koreaDateStr;
+    
+    // 한국 시간대 기준 날짜 계산 헬퍼 함수
+    const getKoreaDate = (date: Date): string => {
+        return date.toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
+    };
+    
+    const addDaysToKoreaDate = (dateStr: string, days: number): string => {
+        // YYYY-MM-DD 형식의 날짜 문자열을 파싱
+        const [year, month, day] = dateStr.split('-').map(Number);
+        const date = new Date(year, month - 1, day);
+        date.setDate(date.getDate() + days);
+        return getKoreaDate(date);
+    };
+    
+    // 디버깅: 현재 시간 정보 로깅
+    const koreaTimeStr = now.toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
     logs.push(`📅 검색 날짜: 오늘 (${todayDate}) 및 내일 (한국 시간 기준)`);
+    logs.push(`   현재 한국 시간: ${koreaTimeStr}`);
 
     // 3.2. searchFirstAvailableFlight 함수 정의 (Rate limiting 포함)
     async function searchFirstAvailableFlight(
@@ -184,7 +202,7 @@ export async function autoRecommendationNode(state: AgentState) {
         try {
             // 1. 오늘 날짜로 항공편 검색 (시간 필터 없음, 모든 항공편)
             const todayResult = await searchFlights(origin, destination, todayDate);
-            
+
             // 에러 체크: searchFlights가 문자열을 반환하면 에러
             if (typeof todayResult === 'string') {
                 // Rate limit 에러 확인
@@ -214,16 +232,14 @@ export async function autoRecommendationNode(state: AgentState) {
                 return todayResult[0];
             }
 
-            // 2. 다음날 날짜로 검색
-            const tomorrow = new Date(todayDate);
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            const tomorrowDate = tomorrow.toISOString().split('T')[0];
+            // 2. 다음날 날짜로 검색 (한국 시간대 기준)
+            const tomorrowDate = addDaysToKoreaDate(todayDate, 1);
 
             // Rate limiting: 다음날 검색 전에도 딜레이
             await new Promise(resolve => setTimeout(resolve, 300));
 
             const tomorrowResult = await searchFlights(origin, destination, tomorrowDate);
-            
+
             // 에러 체크
             if (typeof tomorrowResult === 'string') {
                 // Rate limit 에러 확인
@@ -848,9 +864,20 @@ export async function autoRecommendationNode(state: AgentState) {
     }
 
     // 3. Flight Search - Sequential search: 6h -> 24h -> next day
-    const today = new Date();
+    // 한국 시간대 기준 날짜 계산
     const now = new Date();
-    const todayDate = today.toISOString().split('T')[0];
+    const todayDate = now.toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
+    
+    const getKoreaDate = (date: Date): string => {
+        return date.toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
+    };
+    
+    const addDaysToKoreaDate = (dateStr: string, days: number): string => {
+        const [year, month, day] = dateStr.split('-').map(Number);
+        const date = new Date(year, month - 1, day);
+        date.setDate(date.getDate() + days);
+        return getKoreaDate(date);
+    };
 
     // Helper function to search flights with time filter for all destinations
     const searchFlightsWithTimeWindow = async (
@@ -926,9 +953,7 @@ export async function autoRecommendationNode(state: AgentState) {
     // Step 3: If still no flights, search next day (no time filter, just date)
     if (validFlights.length === 0) {
         logs.push("⚠️ No flights found within 24 hours. Searching for next day...");
-        const tomorrow = new Date(today);
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        searchDate = tomorrow.toISOString().split('T')[0];
+        searchDate = addDaysToKoreaDate(todayDate, 1);
         hoursFromNow = 24; // For next day, we'll search all day
         searchLabel = "다음날";
 
