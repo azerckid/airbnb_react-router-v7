@@ -254,6 +254,38 @@ export default function Concierge() {
                             return `[${cleanedText}](${cleanedUrl})`;
                         });
 
+                        // Remove unnecessary spaces between Korean characters in compound words
+                        // But preserve spaces between sentences and after punctuation
+                        // Only fix obvious word-splitting errors, not all spaces
+                        // Fix common patterns: "고객 님" -> "고객님", "항 공편" -> "항공편" (but only if they appear together)
+                        // More conservative: only fix if there's a single space between two Korean characters that form a common word
+                        // Fix numbers with spaces: "1, 000, 000" -> "1,000,000", "286, 056" -> "286,056"
+                        safeText = safeText.replace(/(\d)\s*,\s*(\d)/g, '$1,$2');
+                        
+                        // Only fix very specific patterns that are clearly wrong
+                        // Don't remove all spaces between Korean characters - be more selective
+                        // Fix only obvious compound word splits: "고객 님", "항 공편", "숙 소", "비 용"
+                        const commonWordFixes: [RegExp, string][] = [
+                            [/(고객)\s+(님)/g, '$1$2'],
+                            [/(항)\s+(공편)/g, '$1$2'],
+                            [/(숙)\s+(소)/g, '$1$2'],
+                            [/(비)\s+(용)/g, '$1$2'],
+                            [/(시)\s+(각)/g, '$1$2'],
+                            [/(출)\s+(발)/g, '$1$2'],
+                            [/(도)\s+(착)/g, '$1$2'],
+                            [/(목)\s+(적지)/g, '$1$2'],
+                            [/(여)\s+(행)/g, '$1$2'],
+                            [/(예)\s+(산)/g, '$1$2'],
+                            [/(데)\s+(이터)/g, '$1$2'],
+                            [/(기)\s+(준)/g, '$1$2'],
+                            [/(추)\s+(정)/g, '$1$2'],
+                            [/(총)\s+(예상)/g, '$1$2'],
+                        ];
+                        
+                        for (const [pattern, replacement] of commonWordFixes) {
+                            safeText = safeText.replace(pattern, replacement);
+                        }
+
                         lastMsg.text = safeText;
                         lastMsg.isStreaming = true; // 스트리밍 중임을 표시
                         if (newLogs.length > 0) {
@@ -284,6 +316,31 @@ export default function Concierge() {
                             const cleanedUrl = url.replace(/\s+/g, '');
                             return `[${cleanedText}](${cleanedUrl})`;
                         });
+
+                        // Fix numbers with spaces: "1, 000, 000" -> "1,000,000"
+                        finalText = finalText.replace(/(\d)\s*,\s*(\d)/g, '$1,$2');
+                        
+                        // Only fix very specific compound word patterns
+                        const commonWordFixes: [RegExp, string][] = [
+                            [/(고객)\s+(님)/g, '$1$2'],
+                            [/(항)\s+(공편)/g, '$1$2'],
+                            [/(숙)\s+(소)/g, '$1$2'],
+                            [/(비)\s+(용)/g, '$1$2'],
+                            [/(시)\s+(각)/g, '$1$2'],
+                            [/(출)\s+(발)/g, '$1$2'],
+                            [/(도)\s+(착)/g, '$1$2'],
+                            [/(목)\s+(적지)/g, '$1$2'],
+                            [/(여)\s+(행)/g, '$1$2'],
+                            [/(예)\s+(산)/g, '$1$2'],
+                            [/(데)\s+(이터)/g, '$1$2'],
+                            [/(기)\s+(준)/g, '$1$2'],
+                            [/(추)\s+(정)/g, '$1$2'],
+                            [/(총)\s+(예상)/g, '$1$2'],
+                        ];
+                        
+                        for (const [pattern, replacement] of commonWordFixes) {
+                            finalText = finalText.replace(pattern, replacement);
+                        }
                         
                         // 스트리밍 완료 플래그 제거하여 강제 리렌더링
                         return newMsgs.map((msg, idx) => 
@@ -445,6 +502,30 @@ export default function Concierge() {
 
             {/* Main Chat Area */}
             <Flex flex={1} direction="column" position="relative">
+                {/* Loading Indicator - Top Left */}
+                {isLoading && (
+                    <Box
+                        position="absolute"
+                        top={4}
+                        left={4}
+                        zIndex={10}
+                        bg="whiteAlpha.900"
+                        backdropFilter="blur(10px)"
+                        px={3}
+                        py={2}
+                        borderRadius="md"
+                        boxShadow="md"
+                        display="flex"
+                        alignItems="center"
+                        gap={2}
+                    >
+                        <Spinner size="sm" color="blue.500" />
+                        <Text fontSize="sm" color="gray.700" fontWeight="medium">
+                            AI가 응답을 생성하고 있습니다...
+                        </Text>
+                    </Box>
+                )}
+
                 {/* Mobile Header */}
                 <Flex
                     display={{ base: "flex", md: "none" }}

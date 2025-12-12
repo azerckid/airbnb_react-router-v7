@@ -130,50 +130,113 @@ export async function autoRecommendationNode(state: AgentState) {
         airports = [{ iataCode: "ICN", name: "Incheon International Airport", distance: 0 }];
     }
 
-    // 3. Flight Search - Search from all nearby airports
+    // 3. Flight Search - Sequential search: 6h -> 24h -> next day
     const dest = "FUK"; // Default destination (can be made dynamic later)
     const today = new Date();
-    const flightDate = today.toISOString().split('T')[0]; // Today/Immediate
-    const hoursFromNow = 6; // Filter flights departing within 6 hours
+    const now = new Date();
+    const todayDate = today.toISOString().split('T')[0];
 
-    logs.push(`🔎 Searching flights from ${airports.length} airport(s) to ${dest} for ${flightDate}`);
-    logs.push(`⏰ Filtering for flights departing within ${hoursFromNow} hours from now`);
+    // Helper function to search flights with time filter
+    const searchFlightsWithTimeWindow = async (
+        searchDate: string,
+        hoursWindow: number,
+        searchLabel: string
+    ): Promise<FlightOffer[]> => {
+        logs.push(`🔎 ${searchLabel}: Searching flights from ${airports.length} airport(s) to ${dest} for ${searchDate}`);
+        logs.push(`⏰ Filtering for flights departing within ${hoursWindow} hours from now`);
 
-    // Search flights from all nearby airports
-    const allFlights: FlightOffer[] = [];
-    for (const airport of airports) {
-        try {
-            const flights = await searchFlights(airport.iataCode, dest, flightDate, hoursFromNow);
-            if (Array.isArray(flights)) {
-                const airportFlights = flights.map(f => ({
-                    ...f,
-                    originAirport: airport.iataCode,
-                    originAirportName: airport.name
-                }));
-                allFlights.push(...airportFlights);
-                logs.push(`   ✓ ${airport.iataCode}: Found ${airportFlights.length} flights within ${hoursFromNow}h`);
+        const allFlights: FlightOffer[] = [];
+        for (const airport of airports) {
+            try {
+                const flights = await searchFlights(airport.iataCode, dest, searchDate, hoursWindow);
+                if (Array.isArray(flights)) {
+                    const airportFlights = flights.map(f => ({
+                        ...f,
+                        originAirport: airport.iataCode,
+                        originAirportName: airport.name
+                    }));
+                    allFlights.push(...airportFlights);
+                    logs.push(`   ✓ ${airport.iataCode}: Found ${airportFlights.length} flights within ${hoursWindow}h`);
+                }
+            } catch (e) {
+                logs.push(`   ✗ ${airport.iataCode}: Search failed - ${e}`);
             }
-        } catch (e) {
-            logs.push(`   ✗ ${airport.iataCode}: Search failed - ${e}`);
         }
+
+        // Sort by departure time and filter by time window
+        allFlights.sort((a, b) => {
+            const timeA = new Date(a.departure.at).getTime();
+            const timeB = new Date(b.departure.at).getTime();
+            return timeA - timeB;
+        });
+
+        const cutoffTime = new Date(now.getTime() + hoursWindow * 60 * 60 * 1000);
+        const validFlights = allFlights.filter(f => {
+            const departureTime = new Date(f.departure.at);
+            return departureTime > now && departureTime <= cutoffTime;
+        });
+
+        logs.push(`✅ ${searchLabel}: ${validFlights.length} flights found`);
+        return validFlights;
+    };
+
+    // Sequential search: 6 hours -> 24 hours -> next day
+    let validFlights: FlightOffer[] = [];
+    let searchDate = todayDate;
+    let hoursFromNow = 6;
+    let searchLabel = "6시간 이내";
+
+    // Step 1: Search within 6 hours
+    validFlights = await searchFlightsWithTimeWindow(todayDate, 6, "Step 1: 6시간 이내");
+
+    // Step 2: If no flights found, search within 24 hours
+    if (validFlights.length === 0) {
+        logs.push("⚠️ No flights found within 6 hours. Expanding search to 24 hours...");
+        hoursFromNow = 24;
+        searchLabel = "24시간 이내";
+        validFlights = await searchFlightsWithTimeWindow(todayDate, 24, "Step 2: 24시간 이내");
     }
 
-    // Sort all flights by departure time (earliest first)
-    allFlights.sort((a, b) => {
-        const timeA = new Date(a.departure.at).getTime();
-        const timeB = new Date(b.departure.at).getTime();
-        return timeA - timeB;
-    });
+    // Step 3: If still no flights, search next day (no time filter, just date)
+    if (validFlights.length === 0) {
+        logs.push("⚠️ No flights found within 24 hours. Searching for next day...");
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        searchDate = tomorrow.toISOString().split('T')[0];
+        hoursFromNow = 24; // For next day, we'll search all day
+        searchLabel = "다음날";
 
-    // Additional filter to ensure all flights are within 6 hours (safety check)
-    const now = new Date();
-    const cutoffTime = new Date(now.getTime() + hoursFromNow * 60 * 60 * 1000);
-    const validFlights = allFlights.filter(f => {
-        const departureTime = new Date(f.departure.at);
-        return departureTime > now && departureTime <= cutoffTime;
-    });
+        // Search next day without time filter (search all flights for that day)
+        logs.push(`🔎 Step 3: 다음날 검색 - Searching flights from ${airports.length} airport(s) to ${dest} for ${searchDate}`);
+        const nextDayFlights: FlightOffer[] = [];
+        for (const airport of airports) {
+            try {
+                // For next day, don't filter by hours, just search the date
+                const flights = await searchFlights(airport.iataCode, dest, searchDate);
+                if (Array.isArray(flights)) {
+                    const airportFlights = flights.map(f => ({
+                        ...f,
+                        originAirport: airport.iataCode,
+                        originAirportName: airport.name
+                    }));
+                    nextDayFlights.push(...airportFlights);
+                    logs.push(`   ✓ ${airport.iataCode}: Found ${airportFlights.length} flights for ${searchDate}`);
+                }
+            } catch (e) {
+                logs.push(`   ✗ ${airport.iataCode}: Search failed - ${e}`);
+            }
+        }
 
-    logs.push(`✅ Total: ${validFlights.length} flights found within ${hoursFromNow} hours from ${airports.length} airport(s)`);
+        // Sort by departure time
+        nextDayFlights.sort((a, b) => {
+            const timeA = new Date(a.departure.at).getTime();
+            const timeB = new Date(b.departure.at).getTime();
+            return timeA - timeB;
+        });
+
+        validFlights = nextDayFlights;
+        logs.push(`✅ Step 3: 다음날 - ${validFlights.length} flights found`);
+    }
 
     let bestFlight = validFlights[0];
     let flightCost = 0;
@@ -182,8 +245,9 @@ export async function autoRecommendationNode(state: AgentState) {
     if (bestFlight) {
         flightCost = parseFloat(bestFlight.price.total);
         if (bestFlight.price.currency !== "KRW") flightCost *= 1450;
+        logs.push(`✅ Selected flight: ${bestFlight.airline} ${bestFlight.flightNumber} (${searchLabel})`);
     } else {
-        logs.push("⚠️ No flights found within 6 hours. User will be informed and alternative options will be suggested.");
+        logs.push("⚠️ No flights found in any time window. Will inform user.");
     }
 
     // 4. Get destination location from arrival airport
@@ -203,12 +267,34 @@ export async function autoRecommendationNode(state: AgentState) {
         logs.push(`   ⚠️ Could not determine destination location, using default: ${searchLocation}`);
     }
 
-    // 5. Room Search - Use dynamic location
+    // 5. Budget and Travel Duration Setup
+    const targetBudget = 1000000; // 100만원 예산
+    const days = 6; // Travel duration: 5-7 days (use 6 days as average)
+    const mealPrice = 15000;
+    const mealsPerDay = 3;
+
+    // Calculate budget for room search
+    // Budget: 1,000,000 KRW for 6 days
+    // Estimated: Flight (if available) + Room (6 nights) + Meals (6 days * 3 meals * 15,000)
+    // Meals: 6 * 3 * 15,000 = 270,000 KRW
+    // Remaining for room: 1,000,000 - flightCost - 270,000
+    const estimatedMealCost = days * mealsPerDay * mealPrice; // 270,000 for 6 days
+    const remainingBudgetForRoom = targetBudget - (hasFlights ? flightCost : 0) - estimatedMealCost;
+    const maxPricePerNight = Math.floor(remainingBudgetForRoom / days);
+
+    logs.push(`💰 Budget calculation: Total ${targetBudget.toLocaleString()}원`);
+    logs.push(`   - Travel duration: ${days}일`);
+    logs.push(`   - Estimated meals: ${estimatedMealCost.toLocaleString()}원`);
+    logs.push(`   - Flight cost: ${hasFlights ? Math.floor(flightCost).toLocaleString() : 0}원`);
+    logs.push(`   - Remaining for room: ${remainingBudgetForRoom.toLocaleString()}원`);
+    logs.push(`   - Max price per night: ${maxPricePerNight.toLocaleString()}원`);
+
+    // Room Search - Use dynamic location and budget-aware pricing
     logs.push("Please wait, searching for rooms...");
     const rooms = await searchStructuredRooms({
         location: searchLocation,
         limit: 3,
-        maxPrice: 150000
+        maxPrice: Math.max(maxPricePerNight, 50000) // Minimum 50,000 to ensure some results
     });
 
     const pickedRoom = rooms[0]; // Best room
@@ -224,28 +310,16 @@ export async function autoRecommendationNode(state: AgentState) {
         logs.push(`💱 Detected Japan accommodation. Converting JPY to KRW (Rate x9): ${pickedRoom.price} -> ${roomCostPerNight}`);
     }
 
-    const days = 7;
+    // Calculate total costs
     const totalRoomCost = roomCostPerNight * days;
-
-    // 5. Meal & Total Logic
-    const mealPrice = 15000;
-    const mealsPerDay = 3;
     const totalMeals = mealPrice * mealsPerDay * days;
     // Only include flight cost if flight is available
     const totalCost = hasFlights ? Math.floor(flightCost + totalRoomCost + totalMeals) : Math.floor(totalRoomCost + totalMeals);
-    const targetBudget = 1000000;
 
-    // Generate Flight Links (Skyscanner: origin/dest/YYMMDD)
-    // flightDate is YYYY-MM-DD -> YYMMDD
-    const dateShort = flightDate.slice(2).replace(/-/g, '');
-    const flightLink = `https://www.skyscanner.co.kr/transport/flights/${originCode.toLowerCase()}/${dest.toLowerCase()}/${dateShort}`;
-
-    // Generate link for next day as alternative
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowDate = tomorrow.toISOString().split('T')[0];
-    const tomorrowDateShort = tomorrowDate.slice(2).replace(/-/g, '');
-    const nextDayFlightLink = `https://www.skyscanner.co.kr/transport/flights/${originCode.toLowerCase()}/${dest.toLowerCase()}/${tomorrowDateShort}`;
+    // Generate Flight Link (Skyscanner: origin/dest/YYMMDD) - only if flight found
+    // searchDate is YYYY-MM-DD -> YYMMDD
+    const dateShort = searchDate.slice(2).replace(/-/g, '');
+    const flightLink = hasFlights ? `https://www.skyscanner.co.kr/transport/flights/${originCode.toLowerCase()}/${dest.toLowerCase()}/${dateShort}` : '';
 
     // Format departure time for display
     const departureTime = bestFlight ? new Date(bestFlight.departure.at) : null;
@@ -270,25 +344,34 @@ export async function autoRecommendationNode(state: AgentState) {
     Destination City: ${destinationLocation?.city || 'Unknown'}
     Destination Country: ${destinationLocation?.country || 'Unknown'}
     Client Time: ${clientTime}
-    Search Criteria: Flights departing within ${hoursFromNow} hours from now
-    Search Date: ${flightDate}
+    Search Criteria: ${searchLabel} 출발 항공편 검색 (순차 검색: 6시간 → 24시간 → 다음날)
+    Search Date: ${searchDate}
+    Travel Duration: ${days}일 (5-7일 범위)
+    Budget: ${targetBudget} KRW (100만원)
     
     Flight Found: ${hasFlights ? 'Yes' : 'No'}
+    Search Result: ${searchLabel}
     ${hasFlights ? `
     Flight: ${bestFlight.airline} ${bestFlight.flightNumber} (Departure: ${departureTimeStr}, Arrival: ${arrivalTimeStr})
     Flight Cost: ${Math.floor(flightCost)} KRW
     Flight Link: ${flightLink}
-    Available Flights: ${validFlights.length} flights found within ${hoursFromNow} hours
+    Available Flights: ${validFlights.length} flights found (${searchLabel})
     ` : `
-    No flights found within ${hoursFromNow} hours from now.
-    Alternative: Search for flights tomorrow (${tomorrowDate})
-    Next Day Flight Link: ${nextDayFlightLink}
+    No flights found after searching: 6 hours → 24 hours → next day
+    All search attempts completed. No flights available.
     `}
     
     Accommodation Search Location: ${searchLocation}
-    Accommodation: ${pickedRoom ? pickedRoom.title : "Standard Hotel"} (${pickedRoom ? pickedRoom.city : "City"}, ${pickedRoom ? pickedRoom.country : "Country"})
-    Room ID: ${pickedRoom ? pickedRoom.id : ""}
+    Accommodation Found: ${pickedRoom ? 'Yes' : 'No'}
+    ${pickedRoom ? `
+    Accommodation: ${pickedRoom.title} (${pickedRoom.city}, ${pickedRoom.country})
+    Room ID: ${pickedRoom.id}
     Room Cost: ${Math.floor(roomCostPerNight)} KRW/night * ${days} days = ${Math.floor(totalRoomCost)} KRW
+    ` : `
+    Accommodation: 해당 지역의 숙소 데이터가 없습니다
+    Room Cost: ${Math.floor(roomCostPerNight)} KRW/night * ${days} days = ${Math.floor(totalRoomCost)} KRW (기본 추정치)
+    Note: 실제 숙소 데이터가 없어 기본 추정 비용을 사용합니다.
+    `}
     
     Meal Plan: ${mealPrice} KRW/meal * 3 meals * ${days} days = ${totalMeals} KRW
     
@@ -315,37 +398,47 @@ export async function autoRecommendationNode(state: AgentState) {
         - Start by mentioning the user's location and nearby airports.
         
         ${hasFlights ? `
-        - **Present the Flight**: Emphasize that this flight departs within ${hoursFromNow} hours from now.
-          Describe the flight Option (Airline, Flight Number, Departure Time, Arrival Time, Cost) smoothly.
-          (Example: "인천공항에서 ${departureTimeStr}에 출발하여 ${arrivalTimeStr}에 도착하는 ${bestFlight.airline}이 ${hoursFromNow}시간 내 출발 가능한 최적의 옵션으로 검색되었습니다.")
-          (CRITICAL: You MUST make the text "[Airline Name] ([Departure Time])" a clickable Markdown link using the [Flight Link] from context.
+        - **Present the Flight**: 
+          - Mention the search process: "6시간 이내 → 24시간 이내 → 다음날까지 순차적으로 검색한 결과, ${searchLabel}에 출발하는 항공편을 찾았습니다."
+          - Describe the flight Option (Airline, Flight Number, Departure Time, Arrival Time, Cost) smoothly.
+          (Example: "인천공항에서 ${departureTimeStr}에 출발하여 ${arrivalTimeStr}에 도착하는 ${bestFlight.airline} ${bestFlight.flightNumber} 항공편이 있으며, 비용은 ${Math.floor(flightCost).toLocaleString()}원입니다.")
+          (CRITICAL: If Flight Link is provided, you MUST make the text "[Airline Name] ([Departure Time])" a clickable Markdown link.
            Example: [${bestFlight.airline} (${departureTimeStr})](${flightLink})
            IMPORTANT: The URL in parentheses MUST NOT contain any spaces. Write it as a single continuous string without spaces.)
-          - Mention if multiple airports were searched and how many flights were found.
+          - Mention the search result: "총 ${validFlights.length}개의 항공편이 검색되었으며, 가장 빠른 출발 시간의 항공편을 추천드립니다."
         ` : `
-        - **Flight Availability**: Clearly inform the user that NO flights were found within ${hoursFromNow} hours from now.
-          Say: "죄송하지만, 현재 시각으로부터 ${hoursFromNow}시간 이내에 출발하는 항공편을 찾을 수 없었습니다."
-          - Provide alternative options:
-            1. Suggest searching for flights tomorrow: "내일 출발하는 항공편을 검색해보시는 것을 추천드립니다."
-            2. Include a link to search for next day flights: [내일 항공편 검색하기](${nextDayFlightLink})
-            3. Suggest expanding the search time window: "또는 더 넓은 시간 범위로 검색해보시기 바랍니다."
-          - Be honest and helpful, do NOT make up flight information.
+        - **Flight Availability**: 
+          - Clearly inform that comprehensive search was completed: "6시간 이내 → 24시간 이내 → 다음날까지 순차적으로 검색을 완료했으나, 항공편을 찾을 수 없었습니다."
+          - Be honest: "현재 시점에서 출발 가능한 항공편이 없습니다."
+          - Suggest: "다른 날짜나 목적지로 검색해보시거나, 나중에 다시 시도해보시기 바랍니다."
+          - Do NOT provide links asking user to search. The system has already completed all searches.
         `}
         
-        - **Present the Accommodation**: Recommend the hotel in the destination city (if available).
-          (CRITICAL: STRICTLY format the Room link as: [RoomTitle](/rooms/${pickedRoom ? pickedRoom.id : ""}). 
+        - **Present the Accommodation**: 
+          ${pickedRoom ? `
+          - Recommend the hotel in the destination city: ${pickedRoom.title}
+          (CRITICAL: STRICTLY format the Room link as: [RoomTitle](/rooms/${pickedRoom.id}). 
            IMPORTANT: Do NOT add spaces inside the link syntax. The URL path must be continuous without spaces.
            Example: [아사쿠사 호스텔 도카이소](/rooms/cmivvx0g7000qt6h775oqytji) - NO spaces in the URL part.)
+          ` : `
+          - Inform the user: "해당 지역의 숙소 데이터가 없습니다. 현재 데이터베이스에 ${searchLocation} 지역의 숙소 정보가 등록되어 있지 않습니다."
+          - Mention that the accommodation cost shown is an estimated default value.
+          - Do NOT create fake hotel names or links when no data is available.
+          `}
         
-        ${hasFlights ? `
-        - **Cost & Summary**: Briefly mention the meal costs and the total estimated trip budget compared to the target.
-          Emphasize that this is a "지금 당장 출발 가능한" (can depart right now) trip option.
-        ` : `
-        - **Alternative Planning**: Since no immediate flights are available, suggest:
-          1. Planning for tomorrow or later dates
-          2. Checking accommodation availability for future dates
-          3. Being flexible with travel dates for better options
-        `}
+        - **Cost & Summary**: 
+          ${hasFlights ? `
+          - Mention the travel duration: "${days}일 여행 기준"
+          - Break down costs: 항공편 ${Math.floor(flightCost).toLocaleString()}원 + 숙소 ${Math.floor(totalRoomCost).toLocaleString()}원 + 식사 ${totalMeals.toLocaleString()}원
+          - Total cost: 총 예상 비용 ${totalCost.toLocaleString()}원
+          - Budget comparison: 목표 예산 ${targetBudget.toLocaleString()}원 대비 ${totalCost <= targetBudget ? '예산 내' : '예산 초과'}
+          - Emphasize: "이는 ${searchLabel}에 출발 가능한 여행 계획입니다."
+          ` : `
+          - Mention: 항공편이 없어 항공편 비용을 제외한 예상 비용만 계산
+          - Break down costs: 숙소 ${Math.floor(totalRoomCost).toLocaleString()}원 + 식사 ${totalMeals.toLocaleString()}원
+          - Total cost: 총 예상 비용 ${totalCost.toLocaleString()}원 (항공편 비용 제외)
+          - Note: 항공편이 확정되면 추가 비용이 발생할 수 있습니다.
+          `}
         
         Context Data:
         {context}
@@ -355,6 +448,11 @@ export async function autoRecommendationNode(state: AgentState) {
         - Do NOT output brackets like [Flight Info] literally. Replace them with the actual data from Context.
         - If "Flight Found: No" in context, DO NOT create fake flight information. Be honest about the unavailability.
         - Always provide helpful alternatives when flights are not available.
+        - CRITICAL: Do NOT add spaces between characters in words. Write Korean text without unnecessary spaces.
+          Examples of WRONG: "고객 님", "항 공편", "숙 소", "비 용"
+          Examples of CORRECT: "고객님", "항공편", "숙소", "비용"
+        - When writing numbers with commas, use proper formatting: 1,000,000 (not 1, 000, 000)
+        - Write all text naturally without inserting spaces between characters.
         `],
         ["human", "Recommend the trip now."]
     ]);
