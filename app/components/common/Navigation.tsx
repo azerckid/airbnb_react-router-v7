@@ -44,7 +44,7 @@ export function Navigation({
                             <RouterLink to="/experiences">Experiences</RouterLink>
                         </Button>
                         <Button asChild variant="ghost" colorPalette="cyan">
-                            <RouterLink to="/">
+                            <RouterLink to="/concierge">
                                 <HStack gap={2}>
                                     <FaRobot />
                                     <Text>AI Concierge</Text>
