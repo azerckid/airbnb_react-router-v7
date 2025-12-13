@@ -229,7 +229,7 @@ export async function initAutoPlanNode(state: AgentState) {
     }
 
     logs.push(`   검색 조합 생성 완료: ${koreanAirports.length}개 출발지 × ${destinationCities.length}개 목적지 = ${searchCombinations.length}개 경로`);
-    logs.push(`\n🔍 ${searchCombinations.length}개 경로에 대해 항공편 검색을 시작합니다 (실시간 업데이트)...`);
+    logs.push(`🔍 ${searchCombinations.length}개 경로에 대해 항공편 검색을 시작합니다 (실시간 업데이트)...`);
 
     return {
         combinations: searchCombinations,
@@ -332,12 +332,12 @@ export async function finalizeAutoPlanNode(state: AgentState) {
     const searchResults = state.searchResults || [];
     const query = state.query || "";
 
-    logs.push(`\n✅ Phase 3 완료: ${searchResults.length}개 조합 검색 완료`);
+    logs.push(`✅ Phase 3 완료: ${searchResults.length}개 조합 검색 완료`);
 
     // ============================================
     // Phase 4: 항공편 결과 정렬 및 선택
     // ============================================
-    logs.push("\n" + "=".repeat(60));
+    logs.push("=".repeat(60));
     logs.push("Phase 4: 항공편 결과 정렬 및 선택");
     logs.push("=".repeat(60));
 
@@ -345,7 +345,7 @@ export async function finalizeAutoPlanNode(state: AgentState) {
     const validResults = searchResults.filter(result => result.flight !== null);
 
     if (validResults.length === 0) {
-        logs.push(`\n⚠️ 모든 조합에서 항공편을 찾을 수 없었습니다.`);
+        logs.push(`⚠️ 모든 조합에서 항공편을 찾을 수 없었습니다.`);
         return {
             answer: `Phase 3-4 완료: ${searchResults.length}개 조합을 모두 검색했으나, 당장 출발 가능한 항공편을 찾을 수 없었습니다.\n\n검색 범위: 오늘 날짜 및 내일 날짜\n결과: 항공편 없음`,
             foundFlights: [],
@@ -354,7 +354,7 @@ export async function finalizeAutoPlanNode(state: AgentState) {
         };
     }
 
-    logs.push(`\n📊 ${validResults.length}개 유효한 항공편 결과 발견`);
+    logs.push(`📊 ${validResults.length}개 유효한 항공편 결과 발견`);
 
     // 4.2. Group by Destination City and find best flight for each city
     const bestFlightsByCity = new Map<string, any>();
@@ -386,7 +386,7 @@ export async function finalizeAutoPlanNode(state: AgentState) {
         })
         .slice(0, 5); // Top 5 destinations
 
-    logs.push(`\n✅ 최종 선택된 TOP 5 여행지:`);
+    logs.push(`✅ 최종 선택된 TOP 5 여행지:`);
     topDestinations.forEach((dest, idx) => {
         const price = parseFloat(dest.flight!.price.total);
         logs.push(`   ${idx + 1}. ${dest.destinationCityKorean || dest.destinationCity} (항공권: ${Math.floor(price).toLocaleString()} ${dest.flight!.price.currency})`);
@@ -396,7 +396,7 @@ export async function finalizeAutoPlanNode(state: AgentState) {
     // ============================================
     // Phase 5: 숙소 검색 (Top 5 각각)
     // ============================================
-    logs.push("\n" + "=".repeat(60));
+    logs.push("=".repeat(60));
     logs.push("Phase 5: TOP 5 여행지별 숙소 검색");
     logs.push("=".repeat(60));
 
@@ -514,7 +514,7 @@ export async function finalizeAutoPlanNode(state: AgentState) {
     const chain = prompt.pipe(model).pipe(new StringOutputParser());
     const answer = await chain.invoke({ context, clientTime });
 
-    logs.push(`\n✅ AI 응답 생성 완료`);
+    logs.push(`✅ AI 응답 생성 완료`);
 
     return {
         answer,

@@ -594,16 +594,8 @@ export default function Concierge() {
                                     {msg.role === "user" ? <FaUser size={14} /> : <FaRobot size={14} />}
                                 </Box>
                                 <Box
-                                    p={4}
-                                    rounded="2xl"
-                                    borderTopLeftRadius={msg.role === "assistant" ? "none" : "2xl"}
-                                    borderTopRightRadius={msg.role === "user" ? "none" : "2xl"}
-                                    bg={msg.role === "user" ? "white" : "whiteAlpha.800"}
-                                    backdropFilter="blur(10px)"
-                                    border="1px solid"
-                                    borderColor="whiteAlpha.500"
+                                    p={2}
                                     color="gray.800"
-                                    shadow="sm"
                                     overflow="hidden"
                                 >
                                     {msg.text && msg.text.trim() ? (
