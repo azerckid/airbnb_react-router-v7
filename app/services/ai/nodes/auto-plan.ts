@@ -1,99 +1,16 @@
 
-
 import { ChatOpenAI } from "@langchain/openai";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { StringOutputParser } from "@langchain/core/output_parsers";
-import { Document } from "@langchain/core/documents";
-import { searchRooms } from "./core.server";
-import { searchFlights, type FlightOffer, filterFlightsWithinHours } from "./tools/flight.server";
-import { searchStructuredRooms, type RoomListing, getAvailableLocations } from "./tools/recommendation.server";
-import { getIpLocation, findNearestAirport, findNearestAirports, getAirportLocation, getAirportLocationByCountry } from "./tools/location.server";
-import { getAllKoreanAirports } from "./tools/korean-airports";
-import { getAllDestinationCities } from "./tools/destination-mapping";
-
-// 1. Define State
-export interface AgentState {
-    query: string;
-    classification?: "GREETING" | "SEARCH" | "FLIGHT" | "EMERGENCY" | "BUDGET" | "AUTO_PLAN";
-    context?: string;
-    answer?: string;
-    logs?: string[];
-    params?: {
-        origin?: string;
-        destination?: string;
-        budget?: number;
-        days?: number;
-        date?: string;
-    };
-    foundFlights?: FlightOffer[];
-    foundRooms?: RoomListing[];
-    ip?: string;
-    // New fields for batch processing
-    combinations?: Array<{
-        origin: string;
-        originName: string;
-        destination: string;
-        destinationCity: string;
-        destinationCityKorean?: string;
-        destinationCountry: string;
-    }>;
-    batchIndex?: number;
-    searchResults?: Array<{
-        origin: string;
-        originName: string;
-        destination: string;
-        destinationCity: string;
-        destinationCityKorean?: string;
-        destinationCountry: string;
-        flight: FlightOffer | null;
-        searchDate: string | null;
-    }>;
-}
+import { type AgentState } from "./types";
+import { searchFlights, type FlightOffer } from "../tools/flight.server";
+import { searchStructuredRooms, type RoomListing } from "../tools/recommendation.server";
+import { getAllKoreanAirports } from "../tools/korean-airports";
+import { getAllDestinationCities } from "../tools/destination-mapping";
 
 const openAIKey = process.env.OPENAI_API_KEY;
 
-// --- Node 1: Router (Supervisor) ---
-export async function routerNode(state: AgentState) {
-    console.log("🚦 Router: Classifying intent...", state.query);
-
-
-
-    const model = new ChatOpenAI({
-        modelName: "gpt-4o-mini",
-        openAIApiKey: openAIKey,
-        temperature: 0,
-    });
-
-    const template = `
-Classify the user input into one of these categories:
-1. "GREETING": Simple hellos, thankyous.
-2. "FLIGHT": Specific flight search questions (e.g., "flight to Tokyo").
-3. "SEARCH": General accommodation search (e.g., "rooms in Seoul").
-4. "EMERGENCY": Urgent requests to leave *now*, *today*, or *within 2 hours*.
-5. "BUDGET": Requests specifying a *total budget* for a trip (e.g., "1 million KRW trip", "Trip under $1000").
-6. "AUTO_PLAN": Requests for a full automatic recommendation or "daily plan".
-   - IF the input contains "[CONTEXT: User is replying to...]" and the user says "Yes", "Find it", "Okay", or similar agreement, classify as "AUTO_PLAN".
-
-Input: {query}
-
-Output only the category name.
-    `.trim();
-
-    const prompt = ChatPromptTemplate.fromTemplate(template);
-    const chain = prompt.pipe(model).pipe(new StringOutputParser());
-
-    try {
-        const result = await chain.invoke({ query: state.query });
-        const classification = result.trim().toUpperCase() as any;
-        console.log("🚦 Classification:", classification);
-        return { classification };
-    } catch (e) {
-        console.error("Router failed, defaulting to SEARCH", e);
-        return { classification: "SEARCH" };
-    }
-}
-
-// --- Helper Functions (Moved to Module Scope for Sharing) ---
+// --- Helper Functions ---
 const getKoreaDate = (date: Date): string => {
     return date.toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
 };
@@ -113,11 +30,6 @@ async function searchFirstAvailableFlight(
     retryCount: number = 0,
     logs: string[] = []
 ): Promise<FlightOffer | null> {
-    // Rate limiting: 각 요청 사이에 딜레이 추가 (300ms)
-    // if (retryCount === 0) {
-    //     await new Promise(resolve => setTimeout(resolve, 300));
-    // }
-
     try {
         // 1. 오늘 날짜로 항공편 검색 (시간 필터 없음, 모든 항공편)
         const todayResult = await searchFlights(origin, destination, todayDate);
@@ -192,7 +104,6 @@ async function searchFirstAvailableFlight(
     }
 }
 
-
 // --- Node 2a: Init Auto Plan (Setup & Phase 1-2) ---
 export async function initAutoPlanNode(state: AgentState) {
     const logs: string[] = [];
@@ -250,7 +161,6 @@ export async function batchAutoPlanNode(state: AgentState) {
     const currentBatch = combinations.slice(batchIndex, batchIndex + BATCH_SIZE);
 
     if (currentBatch.length === 0) {
-        // No more items, logic should have caught this in Conditional Edge, but just in case
         return { batchIndex: batchIndex + BATCH_SIZE }; // Force Move
     }
 
@@ -261,9 +171,6 @@ export async function batchAutoPlanNode(state: AgentState) {
     logs.push(`   📦 배치 처리 중... (${batchIndex + 1} ~${Math.min(batchIndex + BATCH_SIZE, combinations.length)} / ${combinations.length})`);
 
     for (const combo of currentBatch) {
-        // Searched Count (total so far)
-        // const currentCount = batchIndex + currentBatch.indexOf(combo) + 1;
-
         try {
             const flight = await searchFirstAvailableFlight(
                 combo.origin,
@@ -322,12 +229,10 @@ export async function batchAutoPlanNode(state: AgentState) {
     };
 }
 
-
 // --- Node 2c: Finalize (Phase 4-7) ---
 export async function finalizeAutoPlanNode(state: AgentState) {
     const logs: string[] = [];
     const searchResults = state.searchResults || [];
-    const query = state.query || "";
 
     logs.push(`✅ Phase 3 완료: ${searchResults.length}개 조합 검색 완료`);
 
@@ -398,8 +303,6 @@ export async function finalizeAutoPlanNode(state: AgentState) {
     logs.push("Phase 5: TOP 5 여행지별 숙소 검색");
     logs.push("=".repeat(60));
 
-    // (Declarations and loop follow below)
-
     const finalOptions = [];
     const allFoundFlights: FlightOffer[] = [];
     const allFoundRooms: RoomListing[] = [];
@@ -421,10 +324,8 @@ export async function finalizeAutoPlanNode(state: AgentState) {
         const maxPricePerNight = Math.floor(remainingBudgetForRoom / days);
 
         // Room Search
-        // Use English city name for DB search if needed, usually passed as `location`
-        const searchLocation = dest.destinationCity; // The DB uses English names usually? Or mixed?
-        // Actually `searchStructuredRooms` does fuzzy search. Let's try English city name first.
-
+        const searchLocation = dest.destinationCity;
+        // Search
         const rooms = await searchStructuredRooms({
             location: searchLocation, // e.g. "Fukuoka-City", "Osaka"
             maxPrice: Math.max(maxPricePerNight, 50000), // Min 50k guarantee
@@ -521,40 +422,3 @@ export async function finalizeAutoPlanNode(state: AgentState) {
         logs
     };
 }
-
-
-// --- Keep Existing Nodes ---
-// (Copy previous emergency/budget/flight/greeter/searcher logic exactly as is or with minimal changes)
-
-export async function emergencyNode(state: AgentState) {
-    // Redirect to InitAutoPlan
-    return initAutoPlanNode(state);
-}
-
-export async function budgetNode(state: AgentState) {
-    // Redirect to InitAutoPlan
-    return initAutoPlanNode(state);
-}
-
-export async function flightNode(state: AgentState) {
-    const model = new ChatOpenAI({ modelName: "gpt-4o-mini", openAIApiKey: openAIKey });
-    return { answer: "Flight Search Logic here..." };
-}
-
-export async function greeterNode(state: AgentState) {
-    const model = new ChatOpenAI({ modelName: "gpt-4o-mini", openAIApiKey: openAIKey, temperature: 0.7 });
-    const response = await ChatPromptTemplate.fromTemplate("Reply warmly to: {query}").pipe(model).pipe(new StringOutputParser()).invoke({ query: state.query });
-    return { answer: response };
-}
-
-export async function searcherNode(state: AgentState) {
-    const docs = await searchRooms(state.query);
-    const context = docs.map((d: any) => d.pageContent).join("\n");
-    const model = new ChatOpenAI({ modelName: "gpt-4o-mini", openAIApiKey: openAIKey });
-    const response = await ChatPromptTemplate.fromTemplate(`Context: {context} \n\n Answer {query}`).pipe(model).pipe(new StringOutputParser()).invoke({ context, query: state.query });
-    return { answer: response, context };
-}
-
-// Temporary alias for backward compatibility during refactor if needed, 
-// but we will update graph.server.ts to use new nodes.
-export const autoRecommendationNode = initAutoPlanNode;
