@@ -94,6 +94,11 @@ export async function generateGraphResponse(query: string, ip: string = "127.0.0
 
                     // 1. Handle LLM Token Streaming
                     if (event.event === "on_chat_model_stream") {
+                        // Do NOT stream tokens from the 'router' node (it outputs internal classification like "AUTO_PLAN")
+                        if (event.metadata?.langgraph_node === "router") {
+                            continue;
+                        }
+
                         const chunk = event.data.chunk;
                         if (chunk && chunk.content) {
                             controller.enqueue(encoder.encode(chunk.content));

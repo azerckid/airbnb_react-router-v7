@@ -27,7 +27,7 @@ export async function action({ request }: ActionFunctionArgs) {
                     const newConv = await prisma.aiConversation.create({
                         data: {
                             userId: user.id,
-                            title: message.includes("RECOMMEND_TRIP_FROM_CURRENT_LOCATION_TRIGGER")
+                            title: (message.includes("RECOMMEND_TRIP_FROM_CURRENT_LOCATION_TRIGGER") || message.includes("[CONTEXT:"))
                                 ? "RECOMMENDED_TRIP"
                                 : message.slice(0, 40) + (message.length > 40 ? "..." : ""),
                             messages: {
@@ -55,7 +55,7 @@ export async function action({ request }: ActionFunctionArgs) {
                         const newConv = await prisma.aiConversation.create({
                             data: {
                                 userId: user.id,
-                                title: message.includes("RECOMMEND_TRIP_FROM_CURRENT_LOCATION_TRIGGER")
+                                title: (message.includes("RECOMMEND_TRIP_FROM_CURRENT_LOCATION_TRIGGER") || message.includes("[CONTEXT:"))
                                     ? "RECOMMENDED_TRIP"
                                     : message.slice(0, 40) + "...",
                                 messages: { create: { role: "user", content: message } }
