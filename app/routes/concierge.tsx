@@ -176,7 +176,7 @@ export default function Concierge() {
         }
     };
 
-    const sendMessage = async (text: string, isHidden: boolean = false) => {
+    const sendMessage = async (text: string, isHidden: boolean = false, apiTextOverride?: string) => {
         if (!text.trim() || isLoading) return;
 
         if (!isHidden) {
@@ -187,7 +187,7 @@ export default function Concierge() {
 
         try {
             const formData = new URLSearchParams();
-            formData.append("message", text);
+            formData.append("message", apiTextOverride || text);
             if (conversationId) {
                 formData.append("conversationId", conversationId);
             }
@@ -367,7 +367,23 @@ export default function Concierge() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        sendMessage(input.trim());
+        const userText = input.trim();
+        if (!userText) return;
+
+        let apiText = userText;
+        const normalize = userText.toLowerCase();
+
+        // 초기 제안에 대한 긍정 응답인 경우, 실제 트리거 메시지로 교체하여 전송
+        if (!conversationId && messages.length === 1 && messages[0].role === 'assistant') {
+            const isAgreement = normalize.includes("검색") || normalize.includes("해줘") || normalize === "네" || normalize === "응" || normalize === "yes";
+            if (isAgreement) {
+                const now = new Date();
+                const timeString = now.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+                apiText = `RECOMMEND_TRIP_FROM_CURRENT_LOCATION_TRIGGER ${timeString}`;
+            }
+        }
+
+        sendMessage(userText, false, apiText);
         setInput("");
     };
 
@@ -388,12 +404,8 @@ export default function Concierge() {
 
         if (messages.length === 0 && !conversationId && !isLoading && !hasTriggeredRef.current) {
             hasTriggeredRef.current = true;
-            const now = new Date();
-            const timeString = now.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
-
-            const prompt = `RECOMMEND_TRIP_FROM_CURRENT_LOCATION_TRIGGER ${timeString}`.trim();
-            // Send hidden message
-            sendMessage(prompt, true);
+            // Send initial local message only (No backend call yet)
+            setMessages([{ role: "assistant", text: "비용 100만원으로 7일간 여행하실 수 있는 곳을 검색해 드릴까요?" }]);
         }
     }, [messages.length, conversationId, isLoading]);
 
@@ -507,29 +519,7 @@ export default function Concierge() {
 
             {/* Main Chat Area */}
             <Flex flex={1} direction="column" position="relative">
-                {/* Loading Indicator - Top Left */}
-                {isLoading && (
-                    <Box
-                        position="absolute"
-                        top={4}
-                        left={4}
-                        zIndex={10}
-                        bg="whiteAlpha.900"
-                        backdropFilter="blur(10px)"
-                        px={3}
-                        py={2}
-                        borderRadius="md"
-                        boxShadow="md"
-                        display="flex"
-                        alignItems="center"
-                        gap={2}
-                    >
-                        <Spinner size="sm" color="blue.500" />
-                        <Text fontSize="sm" color="gray.700" fontWeight="medium">
-                            AI가 응답을 생성하고 있습니다...
-                        </Text>
-                    </Box>
-                )}
+                {/* Loading Indicator Removed */}
 
                 {/* Mobile Header */}
                 <Flex
@@ -616,12 +606,12 @@ export default function Concierge() {
                                     shadow="sm"
                                     overflow="hidden"
                                 >
-                                    {msg.text ? (
+                                    {msg.text && msg.text.trim() ? (
                                         <Box
                                             className="markdown-body"
                                             fontSize="md"
                                             lineHeight="1.6"
-                                            key={`msg-${idx}-${msg.isStreaming ? 'streaming' : 'complete'}`} // 스트리밍 상태에 따라 key 변경하여 강제 리렌더링
+                                            key={`msg-${idx}-${msg.isStreaming ? 'streaming' : 'complete'}`}
                                             css={{
                                                 "& p": { marginBottom: "0.5rem" },
                                                 "& ul": { paddingLeft: "1.2rem", marginBottom: "0.5rem" },
@@ -641,54 +631,20 @@ export default function Concierge() {
                                             }}
                                         >
                                             <ReactMarkdown
-                                                key={`markdown-${idx}-${msg.isStreaming ? 'streaming' : 'complete'}`} // ReactMarkdown도 강제 리렌더링
+                                                key={`markdown-${idx}-${msg.isStreaming ? 'streaming' : 'complete'}`}
                                                 remarkPlugins={[remarkGfm]}
                                                 components={{
                                                     a: ({ node, ...props }) => {
                                                         const isExternal = props.href?.startsWith('http');
-                                                        const href = props.href || '';
+                                                        const href = props.href || ''; // Changed from href ?? '' due to strict checks
 
-                                                        // External links - open in new tab
                                                         if (isExternal) {
                                                             return (
-                                                                <a
-                                                                    {...props}
-                                                                    target="_blank"
-                                                                    rel="noopener noreferrer"
-                                                                    style={{
-                                                                        color: "#3182ce",
-                                                                        textDecoration: "underline",
-                                                                        fontWeight: "bold",
-                                                                        cursor: "pointer",
-                                                                        transition: "color 0.2s"
-                                                                    }}
-                                                                    onMouseEnter={(e) => {
-                                                                        e.currentTarget.style.color = "#2b6cb0";
-                                                                    }}
-                                                                    onMouseLeave={(e) => {
-                                                                        e.currentTarget.style.color = "#3182ce";
-                                                                    }}
-                                                                />
+                                                                <a {...props} target="_blank" rel="noopener noreferrer" style={{ color: "#3182ce", textDecoration: "underline", fontWeight: "bold", cursor: "pointer", transition: "color 0.2s" }} onMouseEnter={(e) => { e.currentTarget.style.color = "#2b6cb0"; }} onMouseLeave={(e) => { e.currentTarget.style.color = "#3182ce"; }} />
                                                             );
                                                         } else {
-                                                            // Internal links - use React Router Link
                                                             return (
-                                                                <RouterLink
-                                                                    to={href}
-                                                                    style={{
-                                                                        color: "#3182ce",
-                                                                        textDecoration: "underline",
-                                                                        fontWeight: "bold",
-                                                                        cursor: "pointer",
-                                                                        transition: "color 0.2s"
-                                                                    }}
-                                                                    onMouseEnter={(e) => {
-                                                                        e.currentTarget.style.color = "#2b6cb0";
-                                                                    }}
-                                                                    onMouseLeave={(e) => {
-                                                                        e.currentTarget.style.color = "#3182ce";
-                                                                    }}
-                                                                >
+                                                                <RouterLink to={href} style={{ color: "#3182ce", textDecoration: "underline", fontWeight: "bold", cursor: "pointer", transition: "color 0.2s" }} onMouseEnter={(e) => { e.currentTarget.style.color = "#2b6cb0"; }} onMouseLeave={(e) => { e.currentTarget.style.color = "#3182ce"; }}>
                                                                     {props.children}
                                                                 </RouterLink>
                                                             );
@@ -700,7 +656,10 @@ export default function Concierge() {
                                             </ReactMarkdown>
                                         </Box>
                                     ) : (
-                                        <Spinner size="sm" color="gray.500" />
+                                        <HStack gap={2} py={1}>
+                                            <Spinner size="sm" color="blue.500" />
+                                            <Text fontSize="sm" color="gray.500">AI가 응답을 생성하고 있습니다...</Text>
+                                        </HStack>
                                     )}
                                     {msg.logs && msg.logs.length > 0 && (
                                         <Box mt={3}>

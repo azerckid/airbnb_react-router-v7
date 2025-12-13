@@ -14,3 +14,7 @@
 # Generated Cache
 embeddings_cache.json
 embeddings_cache_*.json
+
+
+# VSCode
+.vscode
