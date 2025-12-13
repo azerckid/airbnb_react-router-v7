@@ -44,6 +44,39 @@ interface ConversationItem {
     updatedAt: string;
 }
 
+// LogViewer Component for Auto-Scrolling
+const LogViewer = ({ logs }: { logs: string[] }) => {
+    const scrollRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (scrollRef.current) {
+            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+    }, [logs.length, logs]);
+
+    return (
+        <VStack
+            ref={scrollRef}
+            align="start"
+            gap={1}
+            p={3}
+            pt={2}
+            bg="gray.900"
+            color="green.300"
+            maxH="200px"
+            overflowY="auto"
+            w="full"
+            borderRadius="md"
+        >
+            {logs.map((log, i) => (
+                <Text key={i} fontSize="xs" fontFamily="mono" wordBreak="break-word">
+                    {log}
+                </Text>
+            ))}
+        </VStack>
+    );
+};
+
 export async function loader({ request }: LoaderFunctionArgs) {
     const user = await getUser(request);
     return { user };
@@ -679,13 +712,7 @@ export default function Concierge() {
                                                         <Text>🔍 Progress Logs ({msg.logs.length})</Text>
                                                     </Flex>
                                                 </Box>
-                                                <VStack align="start" gap={1} p={3} pt={2} bg="gray.900" color="green.300" maxH="200px" overflowY="auto">
-                                                    {msg.logs.map((log, i) => (
-                                                        <Text key={i} fontSize="xs" fontFamily="mono" wordBreak="break-word">
-                                                            {log}
-                                                        </Text>
-                                                    ))}
-                                                </VStack>
+                                                <LogViewer logs={msg.logs} />
                                             </Box>
                                         </Box>
                                     )}
