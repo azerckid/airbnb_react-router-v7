@@ -275,49 +275,13 @@ export default function Concierge() {
                         // Note: We only remove spaces in the URL part mostly, but user screenshot showed spaces in Name too.
                         // Let's safe-fix the URL part first which breaks rendering.
 
+                        // Remove all client-side patches. Rely on AI.
                         let safeText = aiResponseText;
-
-                        // Fix markdown links: [ Text ] ( /url ) -> [Text](/url)
-                        // Match markdown link pattern: [text](url)
-                        safeText = safeText.replace(/\[([^\]]*)\]\s*\(\s*([^)]*)\s*\)/g, (match, linkText, url) => {
-                            // Remove spaces from link text (trim only)
-                            const cleanedText = linkText.trim();
-                            // Remove ALL spaces from URL (critical for proper parsing)
-                            const cleanedUrl = url.replace(/\s+/g, '');
-                            return `[${cleanedText}](${cleanedUrl})`;
-                        });
-
-                        // Remove unnecessary spaces between Korean characters in compound words
-                        // But preserve spaces between sentences and after punctuation
-                        // Only fix obvious word-splitting errors, not all spaces
-                        // Fix common patterns: "고객 님" -> "고객님", "항 공편" -> "항공편" (but only if they appear together)
-                        // More conservative: only fix if there's a single space between two Korean characters that form a common word
-                        // Fix numbers with spaces: "1, 000, 000" -> "1,000,000", "286, 056" -> "286,056"
-                        safeText = safeText.replace(/(\d)\s*,\s*(\d)/g, '$1,$2');
 
                         // Only fix very specific patterns that are clearly wrong
                         // Don't remove all spaces between Korean characters - be more selective
                         // Fix only obvious compound word splits: "고객 님", "항 공편", "숙 소", "비 용"
-                        const commonWordFixes: [RegExp, string][] = [
-                            [/(고객)\s+(님)/g, '$1$2'],
-                            [/(항)\s+(공편)/g, '$1$2'],
-                            [/(숙)\s+(소)/g, '$1$2'],
-                            [/(비)\s+(용)/g, '$1$2'],
-                            [/(시)\s+(각)/g, '$1$2'],
-                            [/(출)\s+(발)/g, '$1$2'],
-                            [/(도)\s+(착)/g, '$1$2'],
-                            [/(목)\s+(적지)/g, '$1$2'],
-                            [/(여)\s+(행)/g, '$1$2'],
-                            [/(예)\s+(산)/g, '$1$2'],
-                            [/(데)\s+(이터)/g, '$1$2'],
-                            [/(기)\s+(준)/g, '$1$2'],
-                            [/(추)\s+(정)/g, '$1$2'],
-                            [/(총)\s+(예상)/g, '$1$2'],
-                        ];
 
-                        for (const [pattern, replacement] of commonWordFixes) {
-                            safeText = safeText.replace(pattern, replacement);
-                        }
 
                         lastMsg.text = safeText;
                         lastMsg.isStreaming = true; // 스트리밍 중임을 표시
@@ -347,38 +311,8 @@ export default function Concierge() {
                         // 스트리밍 완료 표시 및 텍스트 재정리
                         let finalText = lastMsg.text;
 
-                        // 최종 정리: 마크다운 링크 형식 정리 (정확한 패턴 매칭)
-                        // Match markdown link pattern: [text](url) and clean both parts
-                        finalText = finalText.replace(/\[([^\]]*)\]\s*\(\s*([^)]*)\s*\)/g, (match, linkText, url) => {
-                            const cleanedText = linkText.trim();
-                            const cleanedUrl = url.replace(/\s+/g, '');
-                            return `[${cleanedText}](${cleanedUrl})`;
-                        });
+                        // Remove all client-side patches. Rely on AI.
 
-                        // Fix numbers with spaces: "1, 000, 000" -> "1,000,000"
-                        finalText = finalText.replace(/(\d)\s*,\s*(\d)/g, '$1,$2');
-
-                        // Only fix very specific compound word patterns
-                        const commonWordFixes: [RegExp, string][] = [
-                            [/(고객)\s+(님)/g, '$1$2'],
-                            [/(항)\s+(공편)/g, '$1$2'],
-                            [/(숙)\s+(소)/g, '$1$2'],
-                            [/(비)\s+(용)/g, '$1$2'],
-                            [/(시)\s+(각)/g, '$1$2'],
-                            [/(출)\s+(발)/g, '$1$2'],
-                            [/(도)\s+(착)/g, '$1$2'],
-                            [/(목)\s+(적지)/g, '$1$2'],
-                            [/(여)\s+(행)/g, '$1$2'],
-                            [/(예)\s+(산)/g, '$1$2'],
-                            [/(데)\s+(이터)/g, '$1$2'],
-                            [/(기)\s+(준)/g, '$1$2'],
-                            [/(추)\s+(정)/g, '$1$2'],
-                            [/(총)\s+(예상)/g, '$1$2'],
-                        ];
-
-                        for (const [pattern, replacement] of commonWordFixes) {
-                            finalText = finalText.replace(pattern, replacement);
-                        }
 
                         // 스트리밍 완료 플래그 제거하여 강제 리렌더링
                         return newMsgs.map((msg, idx) =>
@@ -406,15 +340,12 @@ export default function Concierge() {
         let apiText = userText;
         const normalize = userText.toLowerCase();
 
-        // 초기 제안에 대한 긍정 응답인 경우, 실제 트리거 메시지로 교체하여 전송
+        // Check if this is a response to the greeting.
+        // We pass the context to the backend so the LLM can decide if the user agreed.
         if (!conversationId && messages.length === 1 && messages[0].role === 'assistant') {
-            const isAgreement = normalize.includes("검색") || normalize.includes("해줘") || normalize === "네" || normalize === "응" || normalize === "yes";
-            if (isAgreement) {
-                const now = new Date();
-                const timeString = now.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
-                apiText = `RECOMMEND_TRIP_FROM_CURRENT_LOCATION_TRIGGER ${timeString}`;
-            }
+            apiText = `[CONTEXT: User is replying to AI's proposal "Shall I search for a 7-day trip with 1 million KRW budget?"] User said: "${userText}"`;
         }
+
 
         sendMessage(userText, false, apiText);
         setInput("");
@@ -491,7 +422,7 @@ export default function Concierge() {
                             <VStack align="start" gap={0} w="full">
                                 <Text truncate w="full" fontSize="sm">{conv.title || "New Conversation"}</Text>
                                 <Text fontSize="2xs" color="gray.500">
-                                    {new Date(conv.updatedAt).toLocaleDateString()}
+                                    {new Date(conv.updatedAt).toLocaleString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                                 </Text>
                             </VStack>
                         </Button>

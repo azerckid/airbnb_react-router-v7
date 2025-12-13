@@ -56,11 +56,7 @@ const openAIKey = process.env.OPENAI_API_KEY;
 export async function routerNode(state: AgentState) {
     console.log("🚦 Router: Classifying intent...", state.query);
 
-    // HACK: Logic to detect Auto-Plan prompt from Concierge UI
-    if (state.query && state.query.includes("RECOMMEND_TRIP_FROM_CURRENT_LOCATION_TRIGGER")) {
-        console.log("🚦 Classification: AUTO_PLAN (Detected special trigger)");
-        return { classification: "AUTO_PLAN" };
-    }
+
 
     const model = new ChatOpenAI({
         modelName: "gpt-4o-mini",
@@ -76,6 +72,7 @@ Classify the user input into one of these categories:
 4. "EMERGENCY": Urgent requests to leave *now*, *today*, or *within 2 hours*.
 5. "BUDGET": Requests specifying a *total budget* for a trip (e.g., "1 million KRW trip", "Trip under $1000").
 6. "AUTO_PLAN": Requests for a full automatic recommendation or "daily plan".
+   - IF the input contains "[CONTEXT: User is replying to...]" and the user says "Yes", "Find it", "Okay", or similar agreement, classify as "AUTO_PLAN".
 
 Input: {query}
 
@@ -131,11 +128,11 @@ async function searchFirstAvailableFlight(
             if (todayResult.includes('RATE_LIMIT_ERROR') || todayResult.includes('rate limit') || todayResult.includes('Too many requests')) {
                 if (retryCount < 3) {
                     const delay = Math.pow(2, retryCount + 1) * 1000; // 2초, 4초, 8초
-                    logs.push(`   ⚠️ Rate limit 감지 (${origin} → ${destination}). ${delay / 1000}초 후 재시도... (${retryCount + 1}/3)`);
+                    logs.push(`   ⚠️ Rate limit 감지(${origin} → ${destination}).${delay / 1000}초 후 재시도... (${retryCount + 1}/3)`);
                     await new Promise(resolve => setTimeout(resolve, delay));
                     return searchFirstAvailableFlight(origin, destination, todayDate, retryCount + 1, logs);
                 } else {
-                    logs.push(`   ❌ Rate limit: 재시도 횟수 초과. 이 조합은 건너뜁니다.`);
+                    logs.push(`   ❌ Rate limit: 재시도 횟수 초과.이 조합은 건너뜁니다.`);
                     return null;
                 }
             }
@@ -144,7 +141,7 @@ async function searchFirstAvailableFlight(
                 // 오늘 날짜가 과거이면 다음날만 검색
             } else {
                 // 다른 에러는 로그만 남기고 다음날 검색 시도
-                logs.push(`   ⚠️ 오늘 날짜 검색 에러 (${origin} → ${destination}): ${todayResult.substring(0, 50)}`);
+                logs.push(`   ⚠️ 오늘 날짜 검색 에러(${origin} → ${destination}): ${todayResult.substring(0, 50)} `);
             }
         } else if (Array.isArray(todayResult) && todayResult.length > 0) {
             // 출발 시간 기준 정렬 후 첫 번째 반환
@@ -168,16 +165,16 @@ async function searchFirstAvailableFlight(
             if (tomorrowResult.includes('RATE_LIMIT_ERROR') || tomorrowResult.includes('rate limit') || tomorrowResult.includes('Too many requests')) {
                 if (retryCount < 3) {
                     const delay = Math.pow(2, retryCount + 1) * 1000;
-                    logs.push(`   ⚠️ Rate limit 감지 (${origin} → ${destination}, 내일). ${delay / 1000}초 후 재시도... (${retryCount + 1}/3)`);
+                    logs.push(`   ⚠️ Rate limit 감지(${origin} → ${destination}, 내일).${delay / 1000}초 후 재시도... (${retryCount + 1}/3)`);
                     await new Promise(resolve => setTimeout(resolve, delay));
                     return searchFirstAvailableFlight(origin, destination, todayDate, retryCount + 1, logs);
                 } else {
-                    logs.push(`   ❌ Rate limit: 재시도 횟수 초과. 이 조합은 건너뜁니다.`);
+                    logs.push(`   ❌ Rate limit: 재시도 횟수 초과.이 조합은 건너뜁니다.`);
                     return null;
                 }
             }
             // 다른 에러는 로그만 남기고 null 반환
-            logs.push(`   ⚠️ 내일 날짜 검색 에러 (${origin} → ${destination}): ${tomorrowResult.substring(0, 50)}`);
+            logs.push(`   ⚠️ 내일 날짜 검색 에러(${origin} → ${destination}): ${tomorrowResult.substring(0, 50)} `);
             return null;
         } else if (Array.isArray(tomorrowResult) && tomorrowResult.length > 0) {
             tomorrowResult.sort((a, b) => {
@@ -190,7 +187,7 @@ async function searchFirstAvailableFlight(
         return null;
     } catch (error: any) {
         // 예상치 못한 에러
-        logs.push(`   ❌ 예상치 못한 에러 (${origin} → ${destination}): ${error.message || 'Unknown error'}`);
+        logs.push(`   ❌ 예상치 못한 에러(${origin} → ${destination}): ${error.message || 'Unknown error'} `);
         return null;
     }
 }
@@ -229,7 +226,7 @@ export async function initAutoPlanNode(state: AgentState) {
     }
 
     logs.push(`   검색 조합 생성 완료: ${koreanAirports.length}개 출발지 × ${destinationCities.length}개 목적지 = ${searchCombinations.length}개 경로`);
-    logs.push(`🔍 ${searchCombinations.length}개 경로에 대해 항공편 검색을 시작합니다 (실시간 업데이트)...`);
+    logs.push(`🔍 ${searchCombinations.length}개 경로에 대해 항공편 검색을 시작합니다(실시간 업데이트)...`);
 
     return {
         combinations: searchCombinations,
@@ -261,7 +258,7 @@ export async function batchAutoPlanNode(state: AgentState) {
     const now = new Date();
     const todayDate = getKoreaDate(now);
 
-    logs.push(`   📦 배치 처리 중... (${batchIndex + 1} ~ ${Math.min(batchIndex + BATCH_SIZE, combinations.length)} / ${combinations.length})`);
+    logs.push(`   📦 배치 처리 중... (${batchIndex + 1} ~${Math.min(batchIndex + BATCH_SIZE, combinations.length)} / ${combinations.length})`);
 
     for (const combo of currentBatch) {
         // Searched Count (total so far)
@@ -297,13 +294,13 @@ export async function batchAutoPlanNode(state: AgentState) {
 
             if (flight) {
                 const cityName = combo.destinationCityKorean || combo.destinationCity;
-                const price = typeof flight.price.total === 'string' ? `${parseInt(flight.price.total).toLocaleString()}원` : `${flight.price.total} ${flight.price.currency}`;
-                logs.push(`      ✅ ${cityName} 항공권 발견! (가격: ${price})`);
-                console.log(`      ✅ ${cityName} 항공권 발견! (가격: ${price})`);
+                const price = typeof flight.price.total === 'string' ? `${parseInt(flight.price.total).toLocaleString()} 원` : `${flight.price.total} ${flight.price.currency} `;
+                logs.push(`      ✅ ${cityName} 항공권 발견!(가격: ${price})`);
+                console.log(`      ✅ ${cityName} 항공권 발견!(가격: ${price})`);
             }
 
         } catch (e: any) {
-            logs.push(`      ⚠️ 검색 에러: ${e.message}`);
+            logs.push(`      ⚠️ 검색 에러: ${e.message} `);
             // Push null result to keep index sync if needed, or just ignore
             searchResults.push({
                 origin: combo.origin,
@@ -347,7 +344,7 @@ export async function finalizeAutoPlanNode(state: AgentState) {
     if (validResults.length === 0) {
         logs.push(`⚠️ 모든 조합에서 항공편을 찾을 수 없었습니다.`);
         return {
-            answer: `Phase 3-4 완료: ${searchResults.length}개 조합을 모두 검색했으나, 당장 출발 가능한 항공편을 찾을 수 없었습니다.\n\n검색 범위: 오늘 날짜 및 내일 날짜\n결과: 항공편 없음`,
+            answer: `Phase 3 - 4 완료: ${searchResults.length}개 조합을 모두 검색했으나, 당장 출발 가능한 항공편을 찾을 수 없었습니다.\n\n검색 범위: 오늘 날짜 및 내일 날짜\n결과: 항공편 없음`,
             foundFlights: [],
             foundRooms: [],
             logs
@@ -386,10 +383,11 @@ export async function finalizeAutoPlanNode(state: AgentState) {
         })
         .slice(0, 5); // Top 5 destinations
 
-    logs.push(`✅ 최종 선택된 TOP 5 여행지:`);
+    logs.push(`✅ 최종 선택된 TOP 5 여행지: `);
     topDestinations.forEach((dest, idx) => {
         const price = parseFloat(dest.flight!.price.total);
-        logs.push(`   ${idx + 1}. ${dest.destinationCityKorean || dest.destinationCity} (항공권: ${Math.floor(price).toLocaleString()} ${dest.flight!.price.currency})`);
+        logs.push(`   ${idx + 1}. ${dest.destinationCityKorean || dest.destinationCity} (항공권: ${Math.floor(price).toLocaleString()
+            } ${dest.flight!.price.currency})`);
     });
 
 
