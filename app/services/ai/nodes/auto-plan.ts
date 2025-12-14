@@ -6,7 +6,7 @@ import { type AgentState } from "./types";
 import { searchFlights, type FlightOffer } from "../tools/flight.server";
 import { searchStructuredRooms, type RoomListing } from "../tools/recommendation.server";
 import { getAllKoreanAirports } from "../tools/korean-airports";
-import { getAllDestinationCities } from "../tools/destination-mapping";
+import { getAllDestinationCities, DESTINATION_MAPPINGS } from "../tools/destination-mapping";
 
 const openAIKey = process.env.OPENAI_API_KEY;
 
@@ -437,9 +437,6 @@ export async function finalizeAutoPlanNode(state: AgentState) {
     // @ts-ignore
     const destCodeToCoord = new Map<string, { lat: number; lng: number }>();
 
-    // Need to access lat/lng from DESTINATION_MAPPINGS directly as getAllDestinationCities might mock/strip it if not typed updated
-    // So import DESTINATION_MAPPINGS directly
-    const { DESTINATION_MAPPINGS } = require('../tools/destination-mapping');
     DESTINATION_MAPPINGS.forEach((d: any) => {
         if (d.latitude && d.longitude) {
             destCodeToCoord.set(d.airportCode, { lat: d.latitude, lng: d.longitude });
