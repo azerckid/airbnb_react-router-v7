@@ -348,7 +348,8 @@ export async function finalizeAutoPlanNode(state: AgentState) {
                 console.log("⚠️ No vector match found. Falling back to structured DB search.");
             }
         } catch (e) {
-            console.error("❌ Vector search failed:", e);
+            console.error(`❌ Vector search failed for ${searchLocation}: ${e.message || "Unknown error"}`);
+            await new Promise(resolve => setTimeout(resolve, 2000));
         }
 
         // Fallback or if Vector returned nothing
