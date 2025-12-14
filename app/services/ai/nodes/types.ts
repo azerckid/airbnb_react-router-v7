@@ -38,4 +38,8 @@ export interface AgentState {
         flight: FlightOffer | null;
         searchDate: string | null;
     }>;
+    mapData?: {
+        origin: { lat: number; lng: number; name: string };
+        destinations: Array<{ lat: number; lng: number; name: string; price?: string }>;
+    };
 }
