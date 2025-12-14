@@ -10,6 +10,8 @@ export interface KoreanAirport {
     city: string;
     region: string;
     isMajor: boolean; // Major international hub
+    latitude: number;
+    longitude: number;
 }
 
 /**
@@ -24,7 +26,9 @@ export const KOREAN_INTERNATIONAL_AIRPORTS: KoreanAirport[] = [
         nameKorean: "인천국제공항",
         city: "Incheon",
         region: "Gyeonggi",
-        isMajor: true
+        isMajor: true,
+        latitude: 37.4602,
+        longitude: 126.4407
     },
     {
         iataCode: "GMP",
@@ -32,7 +36,9 @@ export const KOREAN_INTERNATIONAL_AIRPORTS: KoreanAirport[] = [
         nameKorean: "김포국제공항",
         city: "Seoul",
         region: "Seoul",
-        isMajor: true
+        isMajor: true,
+        latitude: 37.5584,
+        longitude: 126.7906
     },
     {
         iataCode: "PUS",
@@ -40,7 +46,9 @@ export const KOREAN_INTERNATIONAL_AIRPORTS: KoreanAirport[] = [
         nameKorean: "김해국제공항",
         city: "Busan",
         region: "Gyeongsangnam",
-        isMajor: true
+        isMajor: true,
+        latitude: 35.1795,
+        longitude: 128.9429
     },
     {
         iataCode: "CJU",
@@ -48,9 +56,11 @@ export const KOREAN_INTERNATIONAL_AIRPORTS: KoreanAirport[] = [
         nameKorean: "제주국제공항",
         city: "Jeju",
         region: "Jeju",
-        isMajor: true
+        isMajor: true,
+        latitude: 33.5104,
+        longitude: 126.4913
     },
-    
+
     // Regional International Airports
     {
         iataCode: "TAE",
@@ -58,7 +68,9 @@ export const KOREAN_INTERNATIONAL_AIRPORTS: KoreanAirport[] = [
         nameKorean: "대구국제공항",
         city: "Daegu",
         region: "Gyeongsangbuk",
-        isMajor: false
+        isMajor: false,
+        latitude: 35.8939,
+        longitude: 128.6553
     },
     {
         iataCode: "YNY",
@@ -66,7 +78,9 @@ export const KOREAN_INTERNATIONAL_AIRPORTS: KoreanAirport[] = [
         nameKorean: "양양국제공항",
         city: "Yangyang",
         region: "Gangwon",
-        isMajor: false
+        isMajor: false,
+        latitude: 38.0613,
+        longitude: 128.6657
     },
     {
         iataCode: "KUV",
@@ -74,7 +88,9 @@ export const KOREAN_INTERNATIONAL_AIRPORTS: KoreanAirport[] = [
         nameKorean: "군산공항",
         city: "Gunsan",
         region: "Jeollabuk",
-        isMajor: false
+        isMajor: false,
+        latitude: 35.9038,
+        longitude: 126.6156
     },
     {
         iataCode: "USN",
@@ -82,7 +98,9 @@ export const KOREAN_INTERNATIONAL_AIRPORTS: KoreanAirport[] = [
         nameKorean: "울산공항",
         city: "Ulsan",
         region: "Ulsan",
-        isMajor: false
+        isMajor: false,
+        latitude: 35.5936,
+        longitude: 129.3517
     },
     {
         iataCode: "RSU",
@@ -90,7 +108,9 @@ export const KOREAN_INTERNATIONAL_AIRPORTS: KoreanAirport[] = [
         nameKorean: "여수공항",
         city: "Yeosu",
         region: "Jeollanam",
-        isMajor: false
+        isMajor: false,
+        latitude: 34.8423,
+        longitude: 127.6169
     },
     {
         iataCode: "WJU",
@@ -98,7 +118,9 @@ export const KOREAN_INTERNATIONAL_AIRPORTS: KoreanAirport[] = [
         nameKorean: "원주공항",
         city: "Wonju",
         region: "Gangwon",
-        isMajor: false
+        isMajor: false,
+        latitude: 37.4592,
+        longitude: 127.9619
     },
     {
         iataCode: "MWX",
@@ -106,7 +128,9 @@ export const KOREAN_INTERNATIONAL_AIRPORTS: KoreanAirport[] = [
         nameKorean: "무안국제공항",
         city: "Muan",
         region: "Jeollanam",
-        isMajor: false
+        isMajor: false,
+        latitude: 34.9914,
+        longitude: 126.3828
     },
     {
         iataCode: "CJJ",
@@ -114,7 +138,9 @@ export const KOREAN_INTERNATIONAL_AIRPORTS: KoreanAirport[] = [
         nameKorean: "청주국제공항",
         city: "Cheongju",
         region: "Chungcheongbuk",
-        isMajor: false
+        isMajor: false,
+        latitude: 36.7167,
+        longitude: 127.4997
     },
     {
         iataCode: "KWJ",
@@ -122,7 +148,9 @@ export const KOREAN_INTERNATIONAL_AIRPORTS: KoreanAirport[] = [
         nameKorean: "광주공항",
         city: "Gwangju",
         region: "Gwangju",
-        isMajor: false
+        isMajor: false,
+        latitude: 35.1399,
+        longitude: 126.8089
     },
     {
         iataCode: "KPO",
@@ -130,7 +158,9 @@ export const KOREAN_INTERNATIONAL_AIRPORTS: KoreanAirport[] = [
         nameKorean: "포항공항",
         city: "Pohang",
         region: "Gyeongsangbuk",
-        isMajor: false
+        isMajor: false,
+        latitude: 35.9878,
+        longitude: 129.4206
     },
 ];
 
@@ -156,7 +186,7 @@ export function getMajorKoreanAirports(): KoreanAirport[] {
  * @returns Array of airports in the region
  */
 export function getAirportsByRegion(region: string): KoreanAirport[] {
-    return KOREAN_INTERNATIONAL_AIRPORTS.filter(airport => 
+    return KOREAN_INTERNATIONAL_AIRPORTS.filter(airport =>
         airport.region.toLowerCase() === region.toLowerCase()
     );
 }

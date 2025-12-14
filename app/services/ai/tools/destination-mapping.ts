@@ -9,6 +9,8 @@ export interface DestinationMapping {
     cityKorean?: string; // Add Korean name field
     airportCode: string;
     airportName: string;
+    latitude: number;
+    longitude: number;
     alternativeAirports?: Array<{ code: string; name: string }>;
 }
 
@@ -16,7 +18,6 @@ export interface DestinationMapping {
  * Mapping of cities with accommodation data to their nearest airports
  * Based on database query results:
  * - Japan: Fukuoka-City, Hiroshima, Kyoto, Osaka, Tokyo
- * - United States: Brooklyn, Manhattan, Queens
  */
 export const DESTINATION_MAPPINGS: DestinationMapping[] = [
     // Japan
@@ -26,6 +27,8 @@ export const DESTINATION_MAPPINGS: DestinationMapping[] = [
         cityKorean: "후쿠오카",
         airportCode: "FUK",
         airportName: "Fukuoka Airport",
+        latitude: 33.5852,
+        longitude: 130.4502
     },
     {
         country: "Japan",
@@ -33,6 +36,8 @@ export const DESTINATION_MAPPINGS: DestinationMapping[] = [
         cityKorean: "히로시마",
         airportCode: "HIJ",
         airportName: "Hiroshima Airport",
+        latitude: 34.4000,
+        longitude: 132.4500,
         alternativeAirports: [
             { code: "OKJ", name: "Okayama Airport" } // Alternative if HIJ not available
         ]
@@ -43,6 +48,8 @@ export const DESTINATION_MAPPINGS: DestinationMapping[] = [
         cityKorean: "교토",
         airportCode: "KIX",
         airportName: "Kansai International Airport",
+        latitude: 35.0116,
+        longitude: 135.7681,
         alternativeAirports: [
             { code: "ITM", name: "Osaka International Airport (Itami)" }
         ]
@@ -53,6 +60,8 @@ export const DESTINATION_MAPPINGS: DestinationMapping[] = [
         cityKorean: "오사카",
         airportCode: "KIX",
         airportName: "Kansai International Airport",
+        latitude: 34.6937,
+        longitude: 135.5023,
         alternativeAirports: [
             { code: "ITM", name: "Osaka International Airport (Itami)" }
         ]
@@ -63,11 +72,12 @@ export const DESTINATION_MAPPINGS: DestinationMapping[] = [
         cityKorean: "도쿄",
         airportCode: "NRT",
         airportName: "Narita International Airport",
+        latitude: 35.6895,
+        longitude: 139.6917,
         alternativeAirports: [
             { code: "HND", name: "Haneda Airport" }
         ]
     },
-
 ];
 
 /**
