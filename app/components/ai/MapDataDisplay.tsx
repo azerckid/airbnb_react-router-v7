@@ -5,13 +5,15 @@ import L from 'leaflet';
 import React, { useEffect } from 'react';
 
 // Fix for default Leaflet icon issues in React
-// @ts-ignore
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-    iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-    iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-});
+if (typeof window !== 'undefined') {
+    // @ts-ignore
+    delete L.Icon.Default.prototype._getIconUrl;
+    L.Icon.Default.mergeOptions({
+        iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+        iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+    });
+}
 
 interface MapCoordinate {
     lat: number;
@@ -44,8 +46,18 @@ export function MapDataDisplay({ origin, destinations, className }: MapDataDispl
     // Collect all points for bounds (origin + all destinations)
     const allMarkers = [origin, ...destinations];
 
+    // SSR Check
+    const [isMounted, setIsMounted] = React.useState(false);
+    useEffect(() => {
+        setIsMounted(true);
+    }, []);
+
+    if (!isMounted) {
+        return <div className={`h-[400px] w-full bg-gray-100 animate-pulse rounded-xl ${className}`} />;
+    }
+
     return (
-        <div className={`h-[300px] w-full rounded-lg overflow-hidden shadow-sm border border-gray-200 z-0 ${className}`}>
+        <div className={`h-[400px] w-full rounded-xl overflow-hidden shadow-md border border-gray-200 z-0 bg-white ${className}`}>
             <MapContainer
                 center={[origin.lat, origin.lng]}
                 zoom={5}
