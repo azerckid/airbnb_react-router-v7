@@ -415,10 +415,58 @@ export async function finalizeAutoPlanNode(state: AgentState) {
 
     logs.push(`✅ AI 응답 생성 완료`);
 
+    // Generate mapData
+    const airportCodeToCoord = new Map<string, { lat: number; lng: number; name: string }>();
+    getAllKoreanAirports().forEach(a => {
+        // @ts-ignore - latitude/longitude added in recent update
+        if (a.latitude && a.longitude) {
+            // @ts-ignore
+            airportCodeToCoord.set(a.iataCode, { lat: a.latitude, lng: a.longitude, name: a.nameKorean });
+        }
+    });
+
+    // Default origin coord if not found (Incheon)
+    const defaultOrigin = { lat: 37.4602, lng: 126.4407, name: "인천국제공항" };
+
+    // We assume mostly same origin for simplicity or pick the first one
+    const originCode = validResults[0]?.origin;
+    const originCoord = originCode ? (airportCodeToCoord.get(originCode) || defaultOrigin) : defaultOrigin;
+
+    // Get destination coords from mapping
+    const destMappings = getAllDestinationCities();
+    // @ts-ignore
+    const destCodeToCoord = new Map<string, { lat: number; lng: number }>();
+
+    // Need to access lat/lng from DESTINATION_MAPPINGS directly as getAllDestinationCities might mock/strip it if not typed updated
+    // So import DESTINATION_MAPPINGS directly
+    const { DESTINATION_MAPPINGS } = require('../tools/destination-mapping');
+    DESTINATION_MAPPINGS.forEach((d: any) => {
+        if (d.latitude && d.longitude) {
+            destCodeToCoord.set(d.airportCode, { lat: d.latitude, lng: d.longitude });
+        }
+    });
+
+    const mapDestinations = topDestinations.map(d => {
+        const coord = destCodeToCoord.get(d.destination) || { lat: 35.6895, lng: 139.6917 }; // Default Tokyo
+        const price = parseFloat(d.flight!.price.total);
+        return {
+            lat: coord.lat,
+            lng: coord.lng,
+            name: d.destinationCityKorean || d.destinationCity,
+            price: `₩${Math.floor(price).toLocaleString()}`
+        };
+    });
+
+    const mapData = {
+        origin: originCoord,
+        destinations: mapDestinations
+    };
+
     return {
         answer,
         foundFlights: allFoundFlights,
         foundRooms: allFoundRooms,
-        logs
+        logs,
+        mapData
     };
 }
