@@ -156,26 +156,67 @@ export async function searchFlights(
 
     } catch (error: any) {
         console.error("❌ Amadeus API Error:", error.response ? error.response.result : error);
-        
-        // Rate limit 에러 확인
+
+        // Check for Rate Limit or Quota Exceeded
         const errorResult = error.response?.result;
         if (errorResult?.errors) {
-            const rateLimitError = errorResult.errors.find((e: any) => 
-                e.status === 429 || e.code === 38194 || e.title?.includes('Too many requests')
+            const rateLimitError = errorResult.errors.find((e: any) =>
+                e.status === 429 || e.code === 38194 || e.code === 38195 || e.title?.includes('Too many requests') || e.title?.includes('Quota limit exceeded')
             );
+
             if (rateLimitError) {
-                return "RATE_LIMIT_ERROR: Too many requests. Please try again later.";
+                console.warn("⚠️ Amadeus API Quota/Rate Limit Exceeded. Using MOCK data.");
+
+                // Return Mock Data
+                return [
+                    {
+                        id: "mock-1",
+                        airline: "Korean Air (Mock)",
+                        flightNumber: "KE123",
+                        departure: {
+                            iataCode: origin,
+                            at: `${departureDate}T10:00:00`
+                        },
+                        arrival: {
+                            iataCode: destination,
+                            at: `${departureDate}T12:00:00`
+                        },
+                        duration: "PT2H",
+                        price: {
+                            currency: "KRW",
+                            total: "250000"
+                        }
+                    },
+                    {
+                        id: "mock-2",
+                        airline: "Asiana Airlines (Mock)",
+                        flightNumber: "OZ456",
+                        departure: {
+                            iataCode: origin,
+                            at: `${departureDate}T14:00:00`
+                        },
+                        arrival: {
+                            iataCode: destination,
+                            at: `${departureDate}T16:00:00`
+                        },
+                        duration: "PT2H",
+                        price: {
+                            currency: "KRW",
+                            total: "280000"
+                        }
+                    }
+                ];
             }
-            
-            // INVALID DATE 에러 확인
-            const invalidDateError = errorResult.errors.find((e: any) => 
+
+            // INVALID DATE Check
+            const invalidDateError = errorResult.errors.find((e: any) =>
                 e.code === 425 || e.title?.includes('INVALID DATE')
             );
             if (invalidDateError) {
                 return "INVALID_DATE_ERROR: Date/Time is in the past.";
             }
         }
-        
+
         return `Error searching for flights: ${error.description || "Unknown error"}`;
     }
 }

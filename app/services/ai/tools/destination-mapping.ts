@@ -68,40 +68,6 @@ export const DESTINATION_MAPPINGS: DestinationMapping[] = [
         ]
     },
 
-    // United States (New York area)
-    {
-        country: "United States",
-        city: "Brooklyn",
-        cityKorean: "브루클린",
-        airportCode: "JFK",
-        airportName: "John F. Kennedy International Airport",
-        alternativeAirports: [
-            { code: "LGA", name: "LaGuardia Airport" },
-            { code: "EWR", name: "Newark Liberty International Airport" }
-        ]
-    },
-    {
-        country: "United States",
-        city: "Manhattan",
-        cityKorean: "맨해튼",
-        airportCode: "JFK",
-        airportName: "John F. Kennedy International Airport",
-        alternativeAirports: [
-            { code: "LGA", name: "LaGuardia Airport" },
-            { code: "EWR", name: "Newark Liberty International Airport" }
-        ]
-    },
-    {
-        country: "United States",
-        city: "Queens",
-        cityKorean: "퀸즈",
-        airportCode: "JFK",
-        airportName: "John F. Kennedy International Airport",
-        alternativeAirports: [
-            { code: "LGA", name: "LaGuardia Airport" },
-            { code: "EWR", name: "Newark Liberty International Airport" }
-        ]
-    },
 ];
 
 /**
