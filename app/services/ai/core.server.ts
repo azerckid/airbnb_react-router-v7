@@ -208,12 +208,30 @@ Description: ${room.description}
 
 
 export async function searchRooms(query: string, k = 4, provider: 'gemini' | 'openai' = 'gemini') {
-    // If Gemini fails, we can fallback to OpenAI if implemented in the logic calling this
-    // For now, this function just forwards the provider choice.
-    const store = await initializeVectorStore(provider);
-    if (!store) return [];
-    const results = await store.similaritySearch(query, k);
-    return results;
+    try {
+        console.log(`🔍 Searching rooms with ${provider}...`);
+        const store = await initializeVectorStore(provider);
+        if (store) {
+            return await store.similaritySearch(query, k);
+        }
+    } catch (e) {
+        console.error(`⚠️ Search with ${provider} failed:`, e);
+    }
+
+    // Fallback Logic
+    if (provider === 'gemini') {
+        console.log("🔄 Switching to OpenAI for fallback search...");
+        try {
+            const store = await initializeVectorStore('openai');
+            if (store) {
+                return await store.similaritySearch(query, k);
+            }
+        } catch (e2) {
+            console.error("❌ OpenAI fallback search also failed:", e2);
+        }
+    }
+
+    return [];
 }
 
 // === Real-time Update Function ===
