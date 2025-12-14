@@ -14,6 +14,7 @@ import {
     useBreakpointValue,
     Drawer
 } from "@chakra-ui/react";
+import { MapDataDisplay } from "~/components/ai/MapDataDisplay";
 import { FaPaperPlane, FaRobot, FaUser, FaPlus, FaHistory, FaBars, FaTrash } from "react-icons/fa";
 import { motion, AnimatePresence } from "framer-motion";
 import type { MetaArgs } from "react-router";
@@ -36,6 +37,10 @@ interface Message {
     text: string;
     logs?: string[];
     isStreaming?: boolean; // 스트리밍 중인지 여부
+    mapData?: {
+        origin: { lat: number; lng: number; name: string };
+        destinations: Array<{ lat: number; lng: number; name: string; price?: string }>;
+    };
 }
 
 interface ConversationItem {
@@ -243,6 +248,7 @@ export default function Concierge() {
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let aiResponseText = "";
+            let aiMapData: any = null;
 
             // 스트리밍 중인 메시지 추가
             setMessages((prev) => [...prev, { role: "assistant", text: "", isStreaming: true }]);
@@ -259,6 +265,13 @@ export default function Concierge() {
                 for (const line of lines) {
                     if (line.startsWith("__LOG__ ")) {
                         newLogs.push(line.replace("__LOG__ ", ""));
+                    } else if (line.startsWith("__MAP__ ")) {
+                        try {
+                            const mapJson = line.replace("__MAP__ ", "");
+                            aiMapData = JSON.parse(mapJson);
+                        } catch (e) {
+                            console.error("Failed to parse map data", e);
+                        }
                     } else {
                         newText += line + "\n";
                     }
@@ -270,24 +283,14 @@ export default function Concierge() {
                     const newMsgs = [...prev];
                     const lastMsg = newMsgs[newMsgs.length - 1];
                     if (lastMsg.role === "assistant" || lastMsg.role === "ai") {
-                        // Regex to remove spaces inside [] and () of markdown links
-                        // e.g., [ Asak usa ] ( /rooms /123 ) -> [Asak usa](/rooms/123)
-                        // Note: We only remove spaces in the URL part mostly, but user screenshot showed spaces in Name too.
-                        // Let's safe-fix the URL part first which breaks rendering.
-
-                        // Remove all client-side patches. Rely on AI.
                         let safeText = aiResponseText;
-
-                        // Only fix very specific patterns that are clearly wrong
-                        // Don't remove all spaces between Korean characters - be more selective
-                        // Fix only obvious compound word splits: "고객 님", "항 공편", "숙 소", "비 용"
-
 
                         lastMsg.text = safeText;
                         lastMsg.isStreaming = true; // 스트리밍 중임을 표시
+                        lastMsg.mapData = aiMapData || lastMsg.mapData; // Update mapData
+
                         if (newLogs.length > 0) {
                             const currentLogs = lastMsg.logs || [];
-                            // Filter out duplicates that are already in the logs
                             const uniqueNewLogs = newLogs.filter(log => !currentLogs.includes(log));
                             if (uniqueNewLogs.length > 0) {
                                 lastMsg.logs = [...currentLogs, ...uniqueNewLogs];
@@ -302,28 +305,21 @@ export default function Concierge() {
             }
 
             // 스트리밍 완료 후 강제 리렌더링을 위해 메시지 업데이트
-            // 약간의 딜레이를 두어 ReactMarkdown이 완전한 텍스트를 파싱하도록 함
             setTimeout(() => {
                 setMessages((prev) => {
                     const newMsgs = [...prev];
                     const lastMsg = newMsgs[newMsgs.length - 1];
                     if (lastMsg && (lastMsg.role === "assistant" || lastMsg.role === "ai")) {
-                        // 스트리밍 완료 표시 및 텍스트 재정리
                         let finalText = lastMsg.text;
-
-                        // Remove all client-side patches. Rely on AI.
-
-
-                        // 스트리밍 완료 플래그 제거하여 강제 리렌더링
                         return newMsgs.map((msg, idx) =>
                             idx === newMsgs.length - 1
-                                ? { ...msg, text: finalText, isStreaming: false }
+                                ? { ...msg, text: finalText, isStreaming: false, mapData: aiMapData || msg.mapData }
                                 : msg
                         );
                     }
                     return newMsgs;
                 });
-            }, 100); // 100ms 딜레이로 ReactMarkdown이 완전한 텍스트를 파싱하도록
+            }, 100);
         } catch (error) {
             console.error("Chat error:", error);
             setMessages((prev) => [...prev, { role: "assistant", text: "Sorry, I encountered an error. Please try again." }]);
@@ -333,6 +329,7 @@ export default function Concierge() {
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
+        // ... (handleSubmit logic unchanged) ...
         e.preventDefault();
         const userText = input.trim();
         if (!userText) return;
@@ -340,12 +337,9 @@ export default function Concierge() {
         let apiText = userText;
         const normalize = userText.toLowerCase();
 
-        // Check if this is a response to the greeting.
-        // We pass the context to the backend so the LLM can decide if the user agreed.
         if (!conversationId && messages.length === 1 && messages[0].role === 'assistant') {
             apiText = `[CONTEXT: User is replying to AI's proposal "Shall I search for a 7-day trip with 1 million KRW budget?"] User said: "${userText}"`;
         }
-
 
         sendMessage(userText, false, apiText);
         setInput("");
@@ -483,8 +477,6 @@ export default function Concierge() {
 
             {/* Main Chat Area */}
             <Flex flex={1} direction="column" position="relative">
-                {/* Loading Indicator Removed */}
-
                 {/* Mobile Header */}
                 <Flex
                     display={{ base: "flex", md: "none" }}
@@ -510,23 +502,15 @@ export default function Concierge() {
                     flex={1}
                     overflowY="auto"
                     p={{ base: 4, md: 8 }}
-                    pt={{ base: 24, md: 28 }} // Added top padding to clear fixed header
-                    pb={32} // Added bottom padding for input area
+                    pt={{ base: 24, md: 28 }}
+                    pb={32}
                     gap={6}
                     ref={scrollRef}
                     css={{ "&::-webkit-scrollbar": { width: "4px" }, "&::-webkit-scrollbar-thumb": { background: "rgba(0,0,0,0.1)" } }}
                 >
                     {messages.length === 0 && !conversationId && (
                         <Flex direction="column" align="center" justify="center" h="full" color="gray.500" gap={6}>
-                            <Box
-                                p={8}
-                                bg="whiteAlpha.600"
-                                rounded="full"
-                                backdropFilter="blur(10px)"
-                                border="1px solid"
-                                borderColor="whiteAlpha.500"
-                                shadow="lg"
-                            >
+                            <Box p={8} bg="whiteAlpha.600" rounded="full" backdropFilter="blur(10px)" border="1px solid" borderColor="whiteAlpha.500" shadow="lg">
                                 <FaRobot size={64} color="#4A5568" />
                             </Box>
                             <VStack>
@@ -537,31 +521,12 @@ export default function Concierge() {
                     )}
 
                     {messages.map((msg, idx) => (
-                        <Flex
-                            key={idx}
-                            w="full"
-                            justify={msg.role === "user" ? "flex-end" : "flex-start"}
-                        >
-                            <HStack
-                                align="start"
-                                maxW="80%"
-                                gap={3}
-                                flexDirection={msg.role === "user" ? "row-reverse" : "row"}
-                            >
-                                <Box
-                                    p={2}
-                                    rounded="full"
-                                    bg={msg.role === "user" ? "gray.200" : "blue.500"}
-                                    color={msg.role === "user" ? "gray.600" : "white"}
-                                    shadow="md"
-                                >
+                        <Flex key={idx} w="full" justify={msg.role === "user" ? "flex-end" : "flex-start"}>
+                            <HStack align="start" maxW="80%" gap={3} flexDirection={msg.role === "user" ? "row-reverse" : "row"}>
+                                <Box p={2} rounded="full" bg={msg.role === "user" ? "gray.200" : "blue.500"} color={msg.role === "user" ? "gray.600" : "white"} shadow="md">
                                     {msg.role === "user" ? <FaUser size={14} /> : <FaRobot size={14} />}
                                 </Box>
-                                <Box
-                                    p={2}
-                                    color="gray.800"
-                                    overflow="hidden"
-                                >
+                                <Box p={2} color="gray.800" overflow="hidden">
                                     {msg.text && msg.text.trim() ? (
                                         <Box
                                             className="markdown-body"
@@ -575,15 +540,8 @@ export default function Concierge() {
                                                 "& li": { marginBottom: "0.2rem" },
                                                 "& strong": { fontWeight: "bold" },
                                                 "& em": { fontStyle: "italic" },
-                                                "& a": {
-                                                    color: "#3182ce",
-                                                    textDecoration: "underline",
-                                                    fontWeight: "bold",
-                                                    cursor: "pointer"
-                                                },
-                                                "& a:hover": {
-                                                    color: "#2b6cb0",
-                                                }
+                                                "& a": { color: "#3182ce", textDecoration: "underline", fontWeight: "bold", cursor: "pointer" },
+                                                "& a:hover": { color: "#2b6cb0" }
                                             }}
                                         >
                                             <ReactMarkdown
@@ -592,8 +550,7 @@ export default function Concierge() {
                                                 components={{
                                                     a: ({ node, ...props }) => {
                                                         const isExternal = props.href?.startsWith('http');
-                                                        const href = props.href || ''; // Changed from href ?? '' due to strict checks
-
+                                                        const href = props.href || '';
                                                         if (isExternal) {
                                                             return (
                                                                 <a {...props} target="_blank" rel="noopener noreferrer" style={{ color: "#3182ce", textDecoration: "underline", fontWeight: "bold", cursor: "pointer", transition: "color 0.2s" }} onMouseEnter={(e) => { e.currentTarget.style.color = "#2b6cb0"; }} onMouseLeave={(e) => { e.currentTarget.style.color = "#3182ce"; }} />
@@ -610,6 +567,17 @@ export default function Concierge() {
                                             >
                                                 {msg.text}
                                             </ReactMarkdown>
+
+                                            {/* Render Map if mapData exists */}
+                                            {msg.mapData && (
+                                                <Box mt={4} w="full">
+                                                    <MapDataDisplay
+                                                        origin={msg.mapData.origin}
+                                                        destinations={msg.mapData.destinations}
+                                                        className="mb-2"
+                                                    />
+                                                </Box>
+                                            )}
                                         </Box>
                                     ) : (
                                         <HStack gap={2} py={1}>
