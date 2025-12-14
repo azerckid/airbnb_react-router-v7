@@ -361,13 +361,14 @@ export async function finalizeAutoPlanNode(state: AgentState) {
     // Construct Prompt Context
     let context = `Found Top ${finalOptions.length} Options:\n\n`;
     finalOptions.forEach((opt, idx) => {
-        const roomInfo = opt.room ? `${opt.room.title} (⭐ High Rating)` : "No Room Found";
-        const roomLinkMd = opt.room ? `[숙소 보기](${opt.roomLink})` : "";
+        const roomTitle = opt.room ? `${opt.room.title} (⭐ High Rating)` : "No Room Found";
+        const roomUrl = opt.room ? opt.roomLink : "#";
         const flightPriceStr = `${Math.floor(opt.flightCostKRW).toLocaleString()} KRW`;
 
         context += `Option ${idx + 1}: ${opt.city}\n`;
-        context += ` - Flight: ${opt.flight!.airline} (${flightPriceStr}) [항공권 보기](${opt.flightLink})\n`;
-        context += ` - Room: ${roomInfo} ${roomLinkMd}\n`;
+        context += ` - Flight: ${opt.flight!.airline} (${flightPriceStr}) [Link](${opt.flightLink})\n`;
+        context += ` - Room: ${roomTitle}\n`;
+        context += ` - RoomLink: ${roomUrl}\n`;
         context += ` - Total Est Cost (6 days): ${Math.floor(opt.totalCost).toLocaleString()} KRW\n`;
         context += `--------------------------------------------------\n`;
     });
@@ -392,8 +393,8 @@ export async function finalizeAutoPlanNode(state: AgentState) {
         2. Use the exact following Markdown format for EACH option:
         
            ## N. City Name
-           **✈️ Flight**: Airline Name (Price in KRW) [Link]
-           **🏨 Accommodation**: Hotel Name [Link]
+           **✈️ Flight**: Airline Name (Price in KRW) [항공권 보기](Flight Link)
+           **🏨 Accommodation**: [Hotel Name](Room Link from Context)
            **💰 Total Estimated Cost (6 Days)**: Price KRW
            *(Brief 1-sentence description of why this city is good)*
            
