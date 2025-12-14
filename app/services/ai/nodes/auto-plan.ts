@@ -5,6 +5,7 @@ import { StringOutputParser } from "@langchain/core/output_parsers";
 import { type AgentState } from "./types";
 import { searchFlights, type FlightOffer } from "../tools/flight.server";
 import { searchStructuredRooms, type RoomListing } from "../tools/recommendation.server";
+import { searchRooms } from "../core.server";
 import { getAllKoreanAirports } from "../tools/korean-airports";
 import { getAllDestinationCities, DESTINATION_MAPPINGS } from "../tools/destination-mapping";
 
@@ -323,16 +324,42 @@ export async function finalizeAutoPlanNode(state: AgentState) {
         const remainingBudgetForRoom = targetBudget - flightCostKRW - estimatedMealCost;
         const maxPricePerNight = Math.floor(remainingBudgetForRoom / days);
 
-        // Room Search
+        // Room Search - Use Vector Search ('Learned Data')
         const searchLocation = dest.destinationCity;
-        // Search
-        const rooms = await searchStructuredRooms({
-            location: searchLocation, // e.g. "Fukuoka-City", "Osaka"
-            maxPrice: Math.max(maxPricePerNight, 50000), // Min 50k guarantee
-            limit: 1
-        });
+        let selectedRoom: any = null;
 
-        const selectedRoom = rooms.length > 0 ? rooms[0] : null;
+        try {
+            console.log(`🧠 Vector Searching room in ${searchLocation} under ${maxPricePerNight} KRW...`);
+            // Query for semantic match
+            const vectorQuery = `Best hotel or stay in ${searchLocation} for around ${maxPricePerNight} KRW or less. Good location.`;
+            const vectorResults = await searchRooms(vectorQuery, 1);
+
+            if (vectorResults && vectorResults.length > 0) {
+                const bestMatch = vectorResults[0];
+                selectedRoom = {
+                    id: bestMatch.metadata.id,
+                    title: bestMatch.metadata.title,
+                    price: bestMatch.metadata.price,
+                    city: bestMatch.metadata.city,
+                    country: "Japan" // Inferred since we are searching Japan destinations
+                };
+                console.log(`✅ Vector match found: ${selectedRoom.title}`);
+            } else {
+                console.log("⚠️ No vector match found. Falling back to structured DB search.");
+            }
+        } catch (e) {
+            console.error("❌ Vector search failed:", e);
+        }
+
+        // Fallback or if Vector returned nothing
+        if (!selectedRoom) {
+            const rooms = await searchStructuredRooms({
+                location: searchLocation, // e.g. "Fukuoka-City", "Osaka"
+                maxPrice: Math.max(maxPricePerNight, 50000), // Min 50k guarantee
+                limit: 1
+            });
+            selectedRoom = rooms.length > 0 ? rooms[0] : null;
+        }
 
         allFoundFlights.push(dest.flight!);
         if (selectedRoom) allFoundRooms.push(selectedRoom);
