@@ -120,6 +120,12 @@ export async function generateGraphResponse(query: string, ip: string = "127.0.0
                         if (nodeName === "router" && output && output.classification) {
                             sendLog(`🚦 Classification: ${output.classification}`);
                         }
+
+                        // 3. Handle Map Data (from finalizeAuto)
+                        if (nodeName === "finalizeAuto" && output && output.mapData) {
+                            const mapPayload = JSON.stringify(output.mapData);
+                            controller.enqueue(encoder.encode(`\n__MAP__ ${mapPayload}\n`));
+                        }
                     }
                 }
 
