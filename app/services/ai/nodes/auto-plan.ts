@@ -390,7 +390,8 @@ export async function finalizeAutoPlanNode(state: AgentState) {
     let context = `Found Top ${finalOptions.length} Options:\n\n`;
     finalOptions.forEach((opt, idx) => {
         const roomTitle = opt.room ? `${opt.room.title} (⭐ High Rating)` : "No Room Found";
-        const roomUrl = opt.room ? opt.roomLink : "#";
+        // Ensure strictly no spaces in URL logic just in case, though usually fine here.
+        const roomUrl = opt.room ? `/rooms/${opt.room.id}` : "#";
         const flightPriceStr = `${Math.floor(opt.flightCostKRW).toLocaleString()} KRW`;
 
         context += `Option ${idx + 1}: ${opt.city}\n`;
@@ -406,7 +407,7 @@ export async function finalizeAutoPlanNode(state: AgentState) {
     const model = new ChatOpenAI({
         modelName: "gpt-4o-mini",
         openAIApiKey: process.env.OPENAI_API_KEY,
-        temperature: 0.5 // Slightly lower temp for better formatting adherence
+        temperature: 0.3 // Lower temperature to strict 0.3 to reduce hallucination
     });
 
     const prompt = ChatPromptTemplate.fromMessages([
@@ -417,22 +418,23 @@ export async function finalizeAutoPlanNode(state: AgentState) {
         {context}
         
         Instructions:
-        1. **Present ALL ${finalOptions.length} options** provided in the context. Do not skip any.
+        1. **Present ALL ${finalOptions.length} options** provided in the context.
         2. Use the exact following Markdown format for EACH option:
         
            ## N. City Name
            **✈️ Flight**: Airline Name (Price in KRW) [항공권 보기](Flight Link)
-           **🏨 Accommodation**: [Hotel Name](Room Link from Context)
+           **🏨 Accommodation**: [Hotel Name](Room Link)
            **💰 Total Estimated Cost (6 Days)**: Price KRW
            *(Brief 1-sentence description of why this city is good)*
            
            ---
         
-        3. **Formatting Rules**:
-           - Use "KRW" for currency (not "KR W").
-           - Do not add random spaces inside words (e.g., use "후쿠오카" not "후 쿠오 카").
-           - Make the links clickable and distinguishable.
-           - Be concise and easy to read.
+        3. **CRITICAL LINK RULES**:
+           - **NEVER** add "https://example.com" or any domain to the "Room Link".
+           - **NEVER** modify the "Room Link" path (e.g. do not change /rooms/xyz to /rooms/ abc).
+           - **NEVER** insert spaces inside the URL.
+           - Use the "RoomLink" provided in the Context **EXACTLY AS IS**.
+           - If RoomLink is "#", do not make it a link, just show text.
         
         4. End with a polite closing remark.
         `],
