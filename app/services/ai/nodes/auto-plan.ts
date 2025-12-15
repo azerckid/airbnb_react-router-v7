@@ -389,15 +389,19 @@ export async function finalizeAutoPlanNode(state: AgentState) {
     // Construct Prompt Context
     let context = `Found Top ${finalOptions.length} Options:\n\n`;
     finalOptions.forEach((opt, idx) => {
-        const roomTitle = opt.room ? `${opt.room.title} (⭐ High Rating)` : "No Room Found";
-        // Ensure strictly no spaces in URL logic just in case, though usually fine here.
+        const roomTitle = opt.room ? opt.room.title : "No Room Found";
         const roomUrl = opt.room ? `/rooms/${opt.room.id}` : "#";
         const flightPriceStr = `${Math.floor(opt.flightCostKRW).toLocaleString()} KRW`;
 
+        // Pre-calculate Markdown Strings using Code so AI doesn't mess it up
+        const flightMD = `**✈️ Flight**: ${opt.flight!.airline} (${flightPriceStr}) [항공권 보기](${opt.flightLink})`;
+        const roomMD = opt.room
+            ? `**🏨 Accommodation**: [${roomTitle}](${roomUrl})`
+            : `**🏨 Accommodation**: No Room Found`;
+
         context += `Option ${idx + 1}: ${opt.city}\n`;
-        context += ` - Flight: ${opt.flight!.airline} (${flightPriceStr}) [Link](${opt.flightLink})\n`;
-        context += ` - Room: ${roomTitle}\n`;
-        context += ` - RoomLink: ${roomUrl}\n`;
+        context += ` - Flight_MD: ${flightMD}\n`;
+        context += ` - Room_MD: ${roomMD}\n`;
         context += ` - Total Est Cost (6 days): ${Math.floor(opt.totalCost).toLocaleString()} KRW\n`;
         context += `--------------------------------------------------\n`;
     });
@@ -407,7 +411,7 @@ export async function finalizeAutoPlanNode(state: AgentState) {
     const model = new ChatOpenAI({
         modelName: "gpt-4o-mini",
         openAIApiKey: process.env.OPENAI_API_KEY,
-        temperature: 0.3 // Lower temperature to strict 0.3 to reduce hallucination
+        temperature: 0.1 // Lowest temp for copying text exactly
     });
 
     const prompt = ChatPromptTemplate.fromMessages([
@@ -419,22 +423,20 @@ export async function finalizeAutoPlanNode(state: AgentState) {
         
         Instructions:
         1. **Present ALL ${finalOptions.length} options** provided in the context.
-        2. Use the exact following Markdown format for EACH option:
+        2. For each option, use the following format:
         
            ## N. City Name
-           **✈️ Flight**: Airline Name (Price in KRW) [항공권 보기](Flight Link)
-           **🏨 Accommodation**: [Hotel Name](Room Link)
+           {Copy Flight_MD from context}
+           {Copy Room_MD from context}
            **💰 Total Estimated Cost (6 Days)**: Price KRW
            *(Brief 1-sentence description of why this city is good)*
            
            ---
         
-        3. **CRITICAL LINK RULES**:
-           - **NEVER** add "https://example.com" or any domain to the "Room Link".
-           - **NEVER** modify the "Room Link" path (e.g. do not change /rooms/xyz to /rooms/ abc).
-           - **NEVER** insert spaces inside the URL.
-           - Use the "RoomLink" provided in the Context **EXACTLY AS IS**.
-           - If RoomLink is "#", do not make it a link, just show text.
+        3. **CRITICAL**:
+           - Do NOT rewrite or reformat the Flight_MD and Room_MD lines.
+           - Copy them EXACTLY as they appear in the Context (including links).
+           - Do not add spaces to URLs.
         
         4. End with a polite closing remark.
         `],
