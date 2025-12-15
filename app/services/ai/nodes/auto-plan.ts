@@ -426,8 +426,8 @@ export async function finalizeAutoPlanNode(state: AgentState) {
         2. For each option, use the following format:
         
            ## N. City Name
-           {Copy Flight_MD from context}
-           {Copy Room_MD from context}
+           [Copy 'Flight_MD' line from context here]
+           [Copy 'Room_MD' line from context here]
            **💰 Total Estimated Cost (6 Days)**: Price KRW
            *(Brief 1-sentence description of why this city is good)*
            
