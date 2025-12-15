@@ -105,6 +105,9 @@ import { OpenAIEmbeddings } from "@langchain/openai";
 let vectorStoreGemini: SimpleMemoryVectorStore | null = null;
 let vectorStoreOpenAI: SimpleMemoryVectorStore | null = null;
 
+// Sticky Provider to remember fallback
+let currentPrimaryProvider: 'gemini' | 'openai' = 'gemini';
+
 const CACHE_FILE_GEMINI = path.join(process.cwd(), "embeddings_cache.json");
 const CACHE_FILE_OPENAI = path.join(process.cwd(), "embeddings_cache_openai.json");
 
@@ -127,7 +130,12 @@ export async function initializeVectorStore(provider: 'gemini' | 'openai' = 'gem
             let embeddings;
             if (provider === 'gemini') {
                 if (!apiKey) throw new Error("GOOGLE_API_KEY missing");
-                embeddings = new GoogleGenerativeAIEmbeddings({ apiKey, taskType: TaskType.RETRIEVAL_DOCUMENT });
+                // Reduce retries to 1 to fail fast on 429
+                embeddings = new GoogleGenerativeAIEmbeddings({
+                    apiKey,
+                    taskType: TaskType.RETRIEVAL_DOCUMENT,
+                    maxRetries: 1
+                });
             } else {
                 if (!openAIKey) throw new Error("OPENAI_API_KEY missing");
                 embeddings = new OpenAIEmbeddings({ openAIApiKey: openAIKey, modelName: "text-embedding-3-small" });
@@ -155,7 +163,11 @@ export async function initializeVectorStore(provider: 'gemini' | 'openai' = 'gem
     let embeddings;
     if (provider === 'gemini') {
         if (!apiKey) throw new Error("GOOGLE_API_KEY missing");
-        embeddings = new GoogleGenerativeAIEmbeddings({ apiKey, taskType: TaskType.RETRIEVAL_DOCUMENT });
+        embeddings = new GoogleGenerativeAIEmbeddings({
+            apiKey,
+            taskType: TaskType.RETRIEVAL_DOCUMENT,
+            maxRetries: 1
+        });
     } else {
         if (!openAIKey) throw new Error("OPENAI_API_KEY missing");
         embeddings = new OpenAIEmbeddings({ openAIApiKey: openAIKey, modelName: "text-embedding-3-small" });
@@ -197,30 +209,26 @@ Description: ${room.description}
     return store;
 }
 
-// 2. Fetch from DB if no cache
-// const rooms = await prisma.room.findMany({
-//     take: 200,
-//     select: { id: true, title: true, description: true, city: true, price: true, category: { select: { name: true } } }
-// });
+export async function searchRooms(query: string, k = 4, provider?: 'gemini' | 'openai') {
+    // Use sticky provider if not specified
+    const targetProvider = provider || currentPrimaryProvider;
 
-// (Previous edit artifact removal: The previous edit inserted a partial function copy. 
-// I need to clean up the mess at lines 200-211 which duplicates logic and adds a brace)
-
-
-export async function searchRooms(query: string, k = 4, provider: 'gemini' | 'openai' = 'gemini') {
     try {
-        console.log(`🔍 Searching rooms with ${provider}...`);
-        const store = await initializeVectorStore(provider);
+        console.log(`🔍 Searching rooms with ${targetProvider}...`);
+        const store = await initializeVectorStore(targetProvider);
         if (store) {
             return await store.similaritySearch(query, k);
         }
     } catch (e) {
-        console.error(`⚠️ Search with ${provider} failed:`, e);
+        console.error(`⚠️ Search with ${targetProvider} failed:`, e);
     }
 
     // Fallback Logic
-    if (provider === 'gemini') {
-        console.log("🔄 Switching to OpenAI for fallback search...");
+    // If we failed with Gemini (either requested explicitly or via sticky default), try OpenAI
+    if (targetProvider === 'gemini') {
+        console.log("🔄 Switching to OpenAI (Fallback) and disabling Gemini for this session...");
+        currentPrimaryProvider = 'openai'; // Permanent switch for this process
+
         try {
             const store = await initializeVectorStore('openai');
             if (store) {
