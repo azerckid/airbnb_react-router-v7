@@ -549,11 +549,15 @@ export default function Concierge() {
                                                 remarkPlugins={[remarkGfm]}
                                                 components={{
                                                     a: ({ node, ...props }) => {
-                                                        const isExternal = props.href?.startsWith('http');
-                                                        const href = props.href || '';
+                                                        // CRITICAL: AI often adds spaces to URLs (e.g. "/ rooms / 123").
+                                                        // We MUST remove them for the link to work.
+                                                        const rawHref = props.href || '';
+                                                        const href = rawHref.replace(/\s/g, "");
+                                                        const isExternal = href.startsWith('http');
+
                                                         if (isExternal) {
                                                             return (
-                                                                <a {...props} target="_blank" rel="noopener noreferrer" style={{ color: "#3182ce", textDecoration: "underline", fontWeight: "bold", cursor: "pointer", transition: "color 0.2s" }} onMouseEnter={(e) => { e.currentTarget.style.color = "#2b6cb0"; }} onMouseLeave={(e) => { e.currentTarget.style.color = "#3182ce"; }} />
+                                                                <a {...props} href={href} target="_blank" rel="noopener noreferrer" style={{ color: "#3182ce", textDecoration: "underline", fontWeight: "bold", cursor: "pointer", transition: "color 0.2s" }} onMouseEnter={(e) => { e.currentTarget.style.color = "#2b6cb0"; }} onMouseLeave={(e) => { e.currentTarget.style.color = "#3182ce"; }} />
                                                             );
                                                         } else {
                                                             return (

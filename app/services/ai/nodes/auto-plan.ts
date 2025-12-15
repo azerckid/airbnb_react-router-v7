@@ -393,16 +393,13 @@ export async function finalizeAutoPlanNode(state: AgentState) {
         const roomUrl = opt.room ? `/rooms/${opt.room.id}` : "#";
         const flightPriceStr = `${Math.floor(opt.flightCostKRW).toLocaleString()} KRW`;
 
-        // Pre-calculate Markdown Strings using Code so AI doesn't mess it up
-        const flightMD = `**✈️ Flight**: ${opt.flight!.airline} (${flightPriceStr}) [항공권 보기](${opt.flightLink})`;
-        const roomMD = opt.room
-            ? `**🏨 Accommodation**: [${roomTitle}](${roomUrl})`
-            : `**🏨 Accommodation**: No Room Found`;
-
         context += `Option ${idx + 1}: ${opt.city}\n`;
-        context += ` - Flight_MD: ${flightMD}\n`;
-        context += ` - Room_MD: ${roomMD}\n`;
-        context += ` - Total Est Cost (6 days): ${Math.floor(opt.totalCost).toLocaleString()} KRW\n`;
+        context += ` - Flight_Airline: ${opt.flight!.airline}\n`;
+        context += ` - Flight_Price: ${flightPriceStr}\n`;
+        context += ` - Flight_Link: ${opt.flightLink}\n`;
+        context += ` - Room_Name: ${roomTitle}\n`;
+        context += ` - Room_Link: ${roomUrl}\n`;
+        context += ` - Total_Cost: ${Math.floor(opt.totalCost).toLocaleString()} KRW\n`;
         context += `--------------------------------------------------\n`;
     });
 
@@ -411,7 +408,7 @@ export async function finalizeAutoPlanNode(state: AgentState) {
     const model = new ChatOpenAI({
         modelName: "gpt-4o-mini",
         openAIApiKey: process.env.OPENAI_API_KEY,
-        temperature: 0.1 // Lowest temp for copying text exactly
+        temperature: 0.3, // Slightly higher than 0.1 to allow smooth sentence generation, but low enough for rules
     });
 
     const prompt = ChatPromptTemplate.fromMessages([
@@ -423,20 +420,20 @@ export async function finalizeAutoPlanNode(state: AgentState) {
         
         Instructions:
         1. **Present ALL ${finalOptions.length} options** provided in the context.
-        2. For each option, use the following format:
+        2. Use this format for EACH option:
         
            ## N. City Name
-           [Copy 'Flight_MD' line from context here]
-           [Copy 'Room_MD' line from context here]
-           **💰 Total Estimated Cost (6 Days)**: Price KRW
+           **✈️ Flight**: {Flight_Airline} ({Flight_Price}) [항공권 보기]({Flight_Link})
+           **🏨 Accommodation**: [{Room_Name}]({Room_Link})
+           **💰 Total Estimated Cost (6 Days)**: {Total_Cost}
            *(Brief 1-sentence description of why this city is good)*
            
            ---
         
-        3. **CRITICAL**:
-           - Do NOT rewrite or reformat the Flight_MD and Room_MD lines.
-           - Copy them EXACTLY as they appear in the Context (including links).
-           - Do not add spaces to URLs.
+        3. **CRITICAL URL RULES**:
+           - **Room_Link**: Use the value EXACTLY as provided in the context.
+           - **DO NOT** add spaces inside the URL (e.g., '/rooms/123' NOT '/ rooms / 123').
+           - **DO NOT** add 'https://example.com'. Keep it as a relative path.
         
         4. End with a polite closing remark.
         `],
