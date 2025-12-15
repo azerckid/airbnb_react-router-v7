@@ -347,7 +347,7 @@ export async function finalizeAutoPlanNode(state: AgentState) {
             } else {
                 console.log("⚠️ No vector match found. Falling back to structured DB search.");
             }
-        } catch (e) {
+        } catch (e: any) {
             console.error(`❌ Vector search failed for ${searchLocation}: ${e.message || "Unknown error"}`);
             await new Promise(resolve => setTimeout(resolve, 2000));
         }
@@ -430,10 +430,13 @@ export async function finalizeAutoPlanNode(state: AgentState) {
            
            ---
         
-        3. **CRITICAL URL RULES**:
-           - **Room_Link**: Use the value EXACTLY as provided in the context.
-           - **DO NOT** add spaces inside the URL (e.g., '/rooms/123' NOT '/ rooms / 123').
-           - **DO NOT** add 'https://example.com'. Keep it as a relative path.
+        3. **URL Formatting Guide (Strictly Follow This Example)**:
+           - If Context has: "Room_Link: /rooms/cmiv123"
+           - ✅ **Correct Output**: [Room Name](/rooms/cmiv123)
+           - ❌ **Wrong Output**: [Room Name] ( / rooms / cmiv123 )  <-- NEVER add spaces inside URL
+           - ❌ **Wrong Output**: [Room Name] (/rooms/cmiv123) <-- NEVER add space between ] and (
+           - ℹ️ **Note**: If relative path fails, full URL (https://localhost/rooms/...) is acceptable as a fallback so user can copy-paste.
+           - Please copy the link string EXACTLY as strictly as possible.
         
         4. End with a polite closing remark.
         `],
