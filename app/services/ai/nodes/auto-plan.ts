@@ -423,9 +423,9 @@ export async function finalizeAutoPlanNode(state: AgentState) {
         2. Use this format for EACH option:
         
            ## N. City Name
-           **✈️ Flight**: {Flight_Airline} ({Flight_Price}) [항공권 보기]({Flight_Link})
-           **🏨 Accommodation**: [{Room_Name}]({Room_Link})
-           **💰 Total Estimated Cost (6 Days)**: {Total_Cost}
+           **✈️ Flight**: [Flight_Airline] ([Flight_Price]) [항공권 보기]([Flight_Link])
+           **🏨 Accommodation**: [[Room_Name]]([Room_Link])
+           **💰 Total Estimated Cost (6 Days)**: [Total_Cost]
            *(Brief 1-sentence description of why this city is good)*
            
            ---
